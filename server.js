@@ -691,6 +691,11 @@ app.get('/api/transactions/:username', (req, res) => {
   res.json({ success: true, data: userTx });
 });
 
+// SPA fallback routing (Express 4 & 5 compatible)
+app.use((req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
 // Khởi chạy server
 app.listen(PORT, () => {
   console.log(`===============================================`);

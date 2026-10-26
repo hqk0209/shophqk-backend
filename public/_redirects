@@ -1,0 +1,6 @@
+# API Proxy tới máy chủ Backend Cloudflare Tunnel
+/api/*  https://refinance-precisely-position-divisions.trycloudflare.com/api/:splat  200!
+/uploads/*  https://refinance-precisely-position-divisions.trycloudflare.com/uploads/:splat  200!
+
+# SPA Routing
+/*  /index.html  200
