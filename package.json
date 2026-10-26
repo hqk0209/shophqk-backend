@@ -1,0 +1,16 @@
+{
+  "name": "shophqk",
+  "version": "1.0.0",
+  "description": "Website ban hang Shophqk voi tinh nang VietQR, quan ly san pham va tai khoan",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@netlify/blobs": "^11.1.6",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "serverless-http": "^4.0.0"
+  }
+}

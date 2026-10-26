@@ -1,0 +1,24 @@
+[
+  {
+    "id": "prod_1792903359070",
+    "name": "Định vị trang phục cus",
+    "price": 100000,
+    "stock": 9999999,
+    "category": "FreeFire Thường",
+    "description": "",
+    "image": "/uploads/img_1792903358809_8786.jpg",
+    "downloadUrl": "https://drive.google.com/file/d/1kIekNZeeQ82G-kZMT-gKjqrgbc10Bq0j/view?usp=drivesdk",
+    "createdAt": "2026-10-25T04:42:39.070Z"
+  },
+  {
+    "id": "prod_1792903287272",
+    "name": "Định vị súng và trang phục",
+    "price": 0,
+    "stock": 99999999994,
+    "category": "FreeFireMax",
+    "description": "",
+    "image": "/uploads/img_1792903287009_1842.jpg",
+    "downloadUrl": "https://link4m.net/mGKB4Xfg",
+    "createdAt": "2026-10-25T04:41:27.272Z"
+  }
+]

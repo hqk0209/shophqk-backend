@@ -1,0 +1,21 @@
+{
+  "shopName": "Shophqk",
+  "shopTitle": "Shophqk - Shop định vị số 1 Việt Nam",
+  "shopDesc": "Định vị Android Antiban all thiết bị",
+  "shopNotice": "⚡ Ưu đãi nạp tiền: Khuyến mãi nạp tự động qua VietQR duyệt siêu tốc! Hỗ trợ 24/7.",
+  "shopNoticeActive": true,
+  "contactZalo": "0349340730",
+  "contactPhone": "0349340730",
+  "contactTelegram": "hqk0209",
+  "contactFacebook": "https://facebook.com//hqk0209",
+  "logoText": "ShopHQK",
+  "bankId": "MOMO",
+  "accountNo": "0349340730",
+  "accountName": "HOANG QUOC KHANH",
+  "categories": [
+    "Tất cả",
+    "FreeFire Thường",
+    "FreeFireMax"
+  ],
+  "adminUsername": "hqk"
+}

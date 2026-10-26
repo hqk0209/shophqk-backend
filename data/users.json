@@ -1,0 +1,38 @@
+[
+  {
+    "id": "user_1792894667142",
+    "username": "hqk",
+    "password": "$2a$10$Ry9UlsuQzRFPX6kZyFGKgOSK0e0I49Z6Oip/od5bgXqqPai59Zypy",
+    "fullname": "Hoàng Quốc Khánh",
+    "balance": 2900000,
+    "role": "admin",
+    "createdAt": "2026-10-25T02:17:47.142Z"
+  },
+  {
+    "id": "user_1792899034558",
+    "username": "hqk0209",
+    "password": "$2a$10$OKBH4c7gRf4yGN/n.BPW/OSUNoZJ5m4hKECiN35iOvGiXd.qcXMjO",
+    "fullname": "khánh",
+    "balance": 2000000,
+    "role": "user",
+    "createdAt": "2026-10-25T03:30:34.558Z"
+  },
+  {
+    "id": "user_1793013537377",
+    "username": "hqkooopp",
+    "password": "$2a$10$FfYyNVM6.nHToiPYgjGgguCJhPwF.tSLR2kMTiQcHaUjEUCb/wZuO",
+    "fullname": "Hà quốc cường",
+    "balance": 0,
+    "role": "user",
+    "createdAt": "2026-10-26T11:18:57.377Z"
+  },
+  {
+    "id": "user_1793014899592",
+    "username": "longdz",
+    "password": "$2a$10$VBzdesG9C4tl9NbJNLQvA.sY9odujPqWUOk9cKKVexHn9tiysiMTa",
+    "fullname": "Hoàng long",
+    "balance": 0,
+    "role": "user",
+    "createdAt": "2026-10-26T11:41:39.595Z"
+  }
+]
