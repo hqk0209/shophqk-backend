@@ -226,6 +226,9 @@
         <button id="admTabDeposits" onclick="switchAdminTab('deposits')" class="admin-tab shrink-0 px-3 py-1.5 rounded-xl text-xs font-medium bg-slate-800 text-slate-300 hover:text-white transition flex items-center gap-1">
           <i data-lucide="check-circle" class="w-3.5 h-3.5 text-cyan-400"></i> Duyệt VietQR <span id="pendingBadge" class="hidden text-[10px] bg-rose-500 text-white px-1.5 py-0.2 rounded-full">0</span>
         </button>
+        <button id="admTabOrders" onclick="switchAdminTab('orders')" class="admin-tab shrink-0 px-3 py-1.5 rounded-xl text-xs font-medium bg-slate-800 text-slate-300 hover:text-white transition flex items-center gap-1">
+          <i data-lucide="shopping-cart" class="w-3.5 h-3.5 text-cyan-400"></i> Lịch Sử Đơn Mua
+        </button>
         <button id="admTabSettings" onclick="switchAdminTab('settings')" class="admin-tab shrink-0 px-3 py-1.5 rounded-xl text-xs font-medium bg-slate-800 text-slate-300 hover:text-white transition flex items-center gap-1">
           <i data-lucide="qr-code" class="w-3.5 h-3.5 text-amber-400"></i> Cấu hình VietQR
         </button>
@@ -540,6 +543,58 @@
             Lưu Cấu Hình VietQR
           </button>
         </form>
+      </div>
+
+      <!-- ADMIN TAB 7: LỊCH SỬ ĐƠN HÀNG MUA CỦA USER -->
+      <div id="admSectionOrders" class="hidden flex-1 overflow-y-auto space-y-3 pr-1">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-slate-950 p-3 rounded-xl border border-slate-800">
+          <div>
+            <h4 class="text-xs font-bold text-white flex items-center gap-1.5">
+              <i data-lucide="package-check" class="w-4 h-4 text-cyan-400"></i> Danh Sách Đơn Mua Của Thành Viên
+            </h4>
+            <p class="text-[11px] text-slate-400">Xem chi tiết ai đã mua món gì, số tiền, ngày giờ và link tải cấp khách</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <input type="text" id="adminOrderSearch" oninput="filterAdminOrders()" placeholder="Tìm theo user / tên SP..." class="bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 w-full sm:w-56">
+            <button type="button" onclick="loadAdminOrders()" class="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition" title="Tải lại">
+              <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Thống kê nhanh -->
+        <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          <div class="bg-slate-950/70 p-2.5 rounded-xl border border-slate-800 text-center">
+            <div class="text-[10px] text-slate-400 font-medium">Tổng Đơn Đã Mua</div>
+            <div id="statTotalOrders" class="text-base font-extrabold text-cyan-400">0</div>
+          </div>
+          <div class="bg-slate-950/70 p-2.5 rounded-xl border border-slate-800 text-center">
+            <div class="text-[10px] text-slate-400 font-medium">Tổng Doanh Thu Bán</div>
+            <div id="statTotalRevenue" class="text-base font-extrabold text-emerald-400">0 đ</div>
+          </div>
+          <div class="bg-slate-950/70 p-2.5 rounded-xl border border-slate-800 text-center col-span-2 sm:col-span-1">
+            <div class="text-[10px] text-slate-400 font-medium">Thành Viên Đã Mua</div>
+            <div id="statUniqueBuyers" class="text-base font-extrabold text-amber-400">0</div>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto border border-slate-800 rounded-xl">
+          <table class="w-full text-left text-xs text-slate-300">
+            <thead class="bg-slate-950 text-slate-400 text-[10px] uppercase font-bold sticky top-0 border-b border-slate-800">
+              <tr>
+                <th class="p-2.5">Mã Đơn / Thời Gian</th>
+                <th class="p-2.5">Người Mua</th>
+                <th class="p-2.5">Sản Phẩm</th>
+                <th class="p-2.5 text-right">SL / Đơn Giá</th>
+                <th class="p-2.5 text-right">Tổng Tiền</th>
+                <th class="p-2.5 text-center">Link Tải Cấp Khách</th>
+              </tr>
+            </thead>
+            <tbody id="adminOrdersTable" class="divide-y divide-slate-800/60 font-sans">
+              <!-- Rendered by JS -->
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   </div>

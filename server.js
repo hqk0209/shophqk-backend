@@ -452,6 +452,13 @@ app.get('/api/admin/deposits', requireAdmin, (req, res) => {
   res.json({ success: true, data: deposits });
 });
 
+// 3.1 Lấy toàn bộ lịch sử đơn mua hàng của các user cho Admin
+app.get('/api/admin/orders', requireAdmin, (req, res) => {
+  const transactions = readJSON(TRANSACTIONS_FILE, []);
+  const orders = transactions.filter(t => t.type === 'PURCHASE' || t.type === 'BUY');
+  res.json({ success: true, data: orders });
+});
+
 // 4. Duyệt nạp tiền cho đơn VietQR (Admin duyệt)
 app.post('/api/admin/approve-deposit', requireAdmin, (req, res) => {
   const txId = req.body.txId || req.body.transactionId || req.body.id;

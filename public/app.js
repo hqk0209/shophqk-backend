@@ -1018,6 +1018,7 @@ const adminTabConfig = {
   shop_info: { btnId: 'admTabShopInfo', secId: 'admSectionShopInfo' },
   users: { btnId: 'admTabUsers', secId: 'admSectionUsers' },
   deposits: { btnId: 'admTabDeposits', secId: 'admSectionDeposits' },
+  orders: { btnId: 'admTabOrders', secId: 'admSectionOrders' },
   settings: { btnId: 'admTabSettings', secId: 'admSectionSettings' }
 };
 
@@ -1026,7 +1027,7 @@ function switchAdminTab(rawTab) {
   if (tab === 'shop_info') tab = 'shopInfo';
   if (!adminTabConfig[tab]) tab = 'product';
 
-  const tabKeys = ['product', 'categories', 'shopInfo', 'users', 'deposits', 'settings'];
+  const tabKeys = ['product', 'categories', 'shopInfo', 'users', 'deposits', 'orders', 'settings'];
 
   tabKeys.forEach(key => {
     const cfg = adminTabConfig[key];
@@ -1062,6 +1063,8 @@ function switchAdminTab(rawTab) {
       loadAdminUsers();
     } else if (tab === 'deposits') {
       loadAdminDeposits();
+    } else if (tab === 'orders') {
+      loadAdminOrders();
     }
   } catch (err) {
     console.error('Lỗi khi tải tab admin:', err);
@@ -1333,6 +1336,116 @@ async function loadAdminDeposits() {
   } catch (err) {
     table.innerHTML = `<tr><td colspan="6" class="p-3 text-center text-rose-400">Lỗi khi tải danh sách nạp tiền.</td></tr>`;
   }
+}
+
+let allAdminOrders = [];
+
+async function loadAdminOrders() {
+  const table = document.getElementById('adminOrdersTable');
+  if (!table) return;
+  table.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-slate-500">Đang tải lịch sử đơn mua của các user...</td></tr>`;
+
+  try {
+    const res = await fetch(`/api/admin/orders?adminUsername=${encodeURIComponent(currentUser.username)}`);
+    const data = await res.json();
+    if (!data.success || !Array.isArray(data.data) || data.data.length === 0) {
+      table.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-slate-500">Chưa có user nào mua hàng.</td></tr>`;
+      updateOrderStats([]);
+      return;
+    }
+
+    allAdminOrders = data.data;
+    updateOrderStats(allAdminOrders);
+    renderAdminOrdersList(allAdminOrders);
+  } catch (err) {
+    console.error('Lỗi khi tải lịch sử đơn hàng cho admin:', err);
+    table.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-rose-400">Không thể tải dữ liệu: ${err.message}</td></tr>`;
+  }
+}
+
+function updateOrderStats(orders) {
+  const totalOrdersEl = document.getElementById('statTotalOrders');
+  const totalRevEl = document.getElementById('statTotalRevenue');
+  const uniqueBuyersEl = document.getElementById('statUniqueBuyers');
+
+  if (totalOrdersEl) totalOrdersEl.innerText = orders.length;
+  if (totalRevEl) {
+    const total = orders.reduce((sum, o) => sum + (Number(o.totalCost) || Number(o.price) || 0), 0);
+    totalRevEl.innerText = total.toLocaleString('vi-VN') + ' đ';
+  }
+  if (uniqueBuyersEl) {
+    const buyers = new Set(orders.map(o => (o.username || '').toLowerCase()).filter(Boolean));
+    uniqueBuyersEl.innerText = buyers.size;
+  }
+}
+
+function renderAdminOrdersList(orders) {
+  const table = document.getElementById('adminOrdersTable');
+  if (!table) return;
+
+  if (orders.length === 0) {
+    table.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-slate-500">Không tìm thấy đơn hàng nào phù hợp.</td></tr>`;
+    return;
+  }
+
+  table.innerHTML = orders.map(ord => {
+    const time = new Date(ord.createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' ' + new Date(ord.createdAt).toLocaleDateString('vi-VN');
+    const total = Number(ord.totalCost) || (Number(ord.price) * (Number(ord.quantity) || 1)) || 0;
+    const download = ord.downloadUrl ? ord.downloadUrl : '';
+
+    return `
+      <tr class="hover:bg-slate-800/40 transition">
+        <td class="p-2.5">
+          <div class="font-mono font-bold text-amber-400 text-[11px]">${ord.id || '-'}</div>
+          <div class="text-[10px] text-slate-400">${time}</div>
+        </td>
+        <td class="p-2.5 font-bold text-indigo-300">
+          <div class="flex items-center gap-1.5">
+            <span class="w-6 h-6 rounded-full bg-indigo-500/20 text-indigo-400 flex items-center justify-center text-[10px] font-bold">
+              ${(ord.username || 'U')[0].toUpperCase()}
+            </span>
+            <span>${ord.username || 'Khách'}</span>
+          </div>
+        </td>
+        <td class="p-2.5">
+          <div class="font-semibold text-white max-w-[200px] truncate" title="${ord.productName || ''}">${ord.productName || 'Sản phẩm'}</div>
+          <div class="text-[10px] text-slate-500 font-mono">ID: ${(ord.productId || '').slice(-6)}</div>
+        </td>
+        <td class="p-2.5 text-right font-medium text-slate-300">
+          <div>SL: <strong class="text-white">${ord.quantity || 1}</strong></div>
+          <div class="text-[10px] text-slate-400">${(Number(ord.price) || 0).toLocaleString('vi-VN')} đ</div>
+        </td>
+        <td class="p-2.5 text-right font-extrabold text-emerald-400">
+          ${total.toLocaleString('vi-VN')} đ
+        </td>
+        <td class="p-2.5 text-center">
+          ${download ? `
+            <a href="${download}" target="_blank" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 text-[11px] font-semibold transition" title="${download}">
+              <i data-lucide="external-link" class="w-3 h-3"></i> Mở Link
+            </a>
+          ` : `<span class="text-slate-500 text-[11px] italic">Không có link</span>`}
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  if (window.lucide && typeof lucide.createIcons === 'function') {
+    lucide.createIcons();
+  }
+}
+
+function filterAdminOrders() {
+  const query = (document.getElementById('adminOrderSearch')?.value || '').trim().toLowerCase();
+  if (!query) {
+    renderAdminOrdersList(allAdminOrders);
+    return;
+  }
+  const filtered = allAdminOrders.filter(o => 
+    (o.username && o.username.toLowerCase().includes(query)) ||
+    (o.productName && o.productName.toLowerCase().includes(query)) ||
+    (o.id && o.id.toLowerCase().includes(query))
+  );
+  renderAdminOrdersList(filtered);
 }
 
 async function adminApproveDeposit(txId) {
