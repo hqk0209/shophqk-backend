@@ -19,6 +19,11 @@ if (!fs.existsSync(UPLOADS_DIR)) {
 }
 app.use('/uploads', express.static(UPLOADS_DIR));
 
+// Health check endpoint cho Cron-job / UptimeRobot giữ web luôn thức 24/7
+app.get(['/api/health', '/ping'], (req, res) => {
+  res.json({ status: 'ok', service: 'Shophqk', uptime: Math.floor(process.uptime()), timestamp: new Date().toISOString() });
+});
+
 // Paths to database files
 const DATA_DIR = path.join(__dirname, 'data');
 const USERS_FILE = path.join(DATA_DIR, 'users.json');

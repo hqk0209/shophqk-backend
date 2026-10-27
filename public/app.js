@@ -1,7 +1,7 @@
-// Tự động định tuyến API: Khi chạy trên Netlify hoặc domain bên ngoài, tự động kết nối về máy chủ Backend
-const API_BASE = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname.includes('trycloudflare.com'))
-  ? ''
-  : 'https://refinance-precisely-position-divisions.trycloudflare.com';
+// Tự động định tuyến API: Chạy trực tiếp trên cùng domain Render / Localhost
+const API_BASE = (window.location.hostname.includes('netlify.app'))
+  ? 'https://shophqk.onrender.com'
+  : '';
 
 const _rawFetch = window.fetch;
 window.fetch = function(url, options) {
