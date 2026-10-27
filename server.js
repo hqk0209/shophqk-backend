@@ -620,12 +620,221 @@ app.post('/api/wallet/create-deposit', (req, res) => {
   });
 });
 
-// Xác nhận giao dịch nạp tiền (ĐÃ TẮT TỰ ĐỘNG DUYỆT TIỀN THEO YÊU CẦU CỦA ADMIN)
-// Tiền chỉ được cộng vào ví khi Admin HQK bấm nút Duyệt trong Bảng Quản Trị (/api/admin/approve-deposit)
+// ========================================================
+// HỆ THỐNG TỰ ĐỘNG DUYỆT TIỀN TỪ NGÂN HÀNG & VÍ ĐIỆN TỬ (WEBHOOK)
+// ========================================================
+
+function processAutomaticDeposit(rawContent, transferAmount, reference = '', gateway = 'BANK') {
+  if (!rawContent || !transferAmount || Number(transferAmount) <= 0) {
+    return { success: false, message: 'Dữ liệu giao dịch không hợp lệ!' };
+  }
+
+  const contentStr = String(rawContent).trim();
+  const amount = Number(transferAmount);
+
+  const transactions = readJSON(TRANSACTIONS_FILE, []);
+  const users = readJSON(USERS_FILE, []);
+
+  // 1. Tìm theo mã NAPxxxxxx (Ưu tiên số 1)
+  let codeMatch = contentStr.match(/NAP\d{6}/i);
+  let tx = null;
+  let txIndex = -1;
+
+  if (codeMatch) {
+    const code = codeMatch[0].toUpperCase();
+    txIndex = transactions.findIndex(t => t.code && t.code.toUpperCase() === code && t.status === 'PENDING');
+    if (txIndex !== -1) {
+      tx = transactions[txIndex];
+    }
+  }
+
+  // 2. Nếu không tìm thấy bằng code, thử tìm theo memo hoặc username + số tiền
+  if (!tx) {
+    txIndex = transactions.findIndex(t => {
+      if (t.type !== 'DEPOSIT' || t.status !== 'PENDING') return false;
+      if (t.memo && contentStr.toUpperCase().includes(t.memo.toUpperCase())) return true;
+      if (t.username && contentStr.toLowerCase().includes(t.username.toLowerCase()) && Number(t.amount) === amount) return true;
+      return false;
+    });
+    if (txIndex !== -1) {
+      tx = transactions[txIndex];
+    }
+  }
+
+  // 3. Nếu giao dịch đã hoàn tất trước đó, bỏ qua để tránh cộng trùng
+  if (!tx && codeMatch) {
+    const code = codeMatch[0].toUpperCase();
+    const alreadyApproved = transactions.find(t => t.code && t.code.toUpperCase() === code && t.status === 'COMPLETED');
+    if (alreadyApproved) {
+      return { success: true, message: `Giao dịch ${code} đã được duyệt trước đó rồi (Bỏ qua xử lý lặp).`, duplicated: true };
+    }
+  }
+
+  if (!tx) {
+    return {
+      success: false,
+      message: `Không tìm thấy đơn nạp PENDING nào khớp với nội dung: "${contentStr}" và số tiền: ${amount.toLocaleString('vi-VN')} đ`
+    };
+  }
+
+  // 4. Tìm User để cộng tiền
+  const userIndex = users.findIndex(u => u.username.toLowerCase() === tx.username.toLowerCase());
+  if (userIndex === -1) {
+    return { success: false, message: `Người dùng ${tx.username} không tồn tại trong hệ thống!` };
+  }
+
+  // 5. Cập nhật số dư và hoàn tất giao dịch
+  const creditedAmount = amount;
+  users[userIndex].balance = (Number(users[userIndex].balance) || 0) + creditedAmount;
+
+  transactions[txIndex].status = 'COMPLETED';
+  transactions[txIndex].approvedAt = new Date().toISOString();
+  transactions[txIndex].approvedBy = `AUTO_${gateway || 'WEBHOOK'}`;
+  transactions[txIndex].realAmountReceived = creditedAmount;
+  transactions[txIndex].bankReference = String(reference || '');
+
+  writeJSON(USERS_FILE, users);
+  writeJSON(TRANSACTIONS_FILE, transactions);
+
+  console.log(`[AUTO-DEPOSIT THÀNH CÔNG] +${creditedAmount.toLocaleString('vi-VN')} đ cho ${users[userIndex].username} (Mã: ${transactions[txIndex].code})`);
+
+  return {
+    success: true,
+    message: `Đã tự động duyệt nạp +${creditedAmount.toLocaleString('vi-VN')} đ cho tài khoản ${users[userIndex].username}!`,
+    username: users[userIndex].username,
+    creditedAmount: creditedAmount,
+    newBalance: users[userIndex].balance,
+    txId: transactions[txIndex].id,
+    code: transactions[txIndex].code
+  };
+}
+
+// Webhook tự động nhận thông báo tiền về từ SePay, Casso, PayOS, Ví MoMo, hoặc App ngân hàng
+app.post(['/api/webhook/payment', '/api/webhook/bank', '/api/webhook/sepay', '/api/webhook/momo'], (req, res) => {
+  const settings = readJSON(SETTINGS_FILE, {});
+  
+  // Xác thực token nếu có thiết lập
+  const authHeader = req.headers['authorization'] || '';
+  const apiKeyHeader = req.headers['x-api-key'] || '';
+  const queryToken = req.query.token || req.query.apiKey || '';
+  const bodyToken = req.body && (req.body.token || req.body.apiKey);
+
+  const providedKey = (authHeader.startsWith('Apikey ') ? authHeader.slice(7).trim() : authHeader) || apiKeyHeader || queryToken || bodyToken;
+  
+  if (settings.webhookSecretKey && providedKey && providedKey !== settings.webhookSecretKey) {
+    return res.status(401).json({ success: false, message: 'Sai mã bảo mật Webhook!' });
+  }
+
+  let content = '';
+  let amount = 0;
+  let reference = '';
+  let gateway = 'BANK';
+
+  // Format Momo chuyên dụng (Web2M, Thesieure, MoMo Notification Forwarder, MacroDroid, v.v.)
+  if (req.body && (req.body.tranId || req.body.comment !== undefined || req.path.includes('momo') || req.body.partnerRefId)) {
+    content = req.body.comment || req.body.message || req.body.content || req.body.noidung || req.body.description || req.body.text || '';
+    amount = Number(req.body.amount || req.body.money || req.body.transferAmount || req.body.sotien || 0);
+    reference = req.body.tranId || req.body.transId || req.body.partnerRefId || req.body.id || '';
+    gateway = 'MOMO';
+
+    // Nếu thông báo dạng tin nhắn đẩy (VD: "Bạn vừa nhận 50.000đ từ ... Lời nhắn: NAP123456")
+    if (amount <= 0) {
+      const fullText = String(req.body.text || req.body.body || req.body.content || '');
+      const moneyMatch = fullText.match(/(\d{1,3}(?:[.,]\d{3})*|\d+)\s*(?:đ|vnd|d|đồng)/i);
+      if (moneyMatch) {
+        amount = Number(moneyMatch[1].replace(/[.,]/g, ''));
+      }
+      if (!content) content = fullText;
+    }
+  }
+  // Format 1: SePay Webhook
+  else if (req.body && (req.body.transferAmount !== undefined || req.body.content !== undefined)) {
+    content = req.body.content || req.body.description || '';
+    amount = Number(req.body.transferAmount || req.body.amount || 0);
+    reference = req.body.referenceCode || req.body.id || '';
+    gateway = req.body.gateway || 'SePay';
+  }
+  // Format 2: Casso Webhook
+  else if (req.body && req.body.data && Array.isArray(req.body.data) && req.body.data.length > 0) {
+    const item = req.body.data[0];
+    content = item.description || '';
+    amount = Number(item.amount || 0);
+    reference = item.tid || item.id || '';
+    gateway = 'Casso';
+  }
+  // Format 3: PayOS Webhook
+  else if (req.body && req.body.data && typeof req.body.data === 'object') {
+    content = req.body.data.description || '';
+    amount = Number(req.body.data.amount || 0);
+    reference = req.body.data.reference || req.body.data.orderCode || '';
+    gateway = 'PayOS';
+  }
+  // Format 4: Universal / Custom Webhook
+  else if (req.body) {
+    content = req.body.content || req.body.memo || req.body.description || req.body.text || req.body.comment || '';
+    amount = Number(req.body.amount || req.body.money || req.body.transferAmount || req.body.transAmount || 0);
+    reference = req.body.reference || req.body.ref || req.body.id || req.body.transId || '';
+    gateway = req.body.gateway || req.body.bank || 'Webhook';
+  }
+
+  console.log(`[WEBHOOK NHẬN TIỀN] Cổng: ${gateway} | Số tiền: ${amount} | Nội dung: "${content}" | Ref: ${reference}`);
+
+  const result = processAutomaticDeposit(content, amount, reference, gateway);
+
+  if (result.success) {
+    return res.json({ success: true, message: result.message, data: result });
+  } else {
+    return res.status(200).json({ success: false, message: result.message });
+  }
+});
+
+// API kiểm tra trạng thái đơn nạp theo thời gian thực (Real-time polling)
+app.get('/api/wallet/deposit-status/:txId', (req, res) => {
+  const { txId } = req.params;
+  const transactions = readJSON(TRANSACTIONS_FILE, []);
+  const tx = transactions.find(t => t.id === txId || t.code === txId);
+  if (!tx) {
+    return res.status(404).json({ success: false, message: 'Không tìm thấy giao dịch!' });
+  }
+  res.json({
+    success: true,
+    status: tx.status,
+    amount: tx.amount,
+    username: tx.username,
+    code: tx.code,
+    approvedAt: tx.approvedAt,
+    approvedBy: tx.approvedBy
+  });
+});
+
+// API giả lập nhận tiền webhook cho Admin test
+app.post('/api/admin/simulate-webhook', requireAdmin, (req, res) => {
+  const { content, amount } = req.body;
+  if (!content || !amount) {
+    return res.status(400).json({ success: false, message: 'Vui lòng nhập nội dung chuyển khoản và số tiền giả lập!' });
+  }
+
+  const result = processAutomaticDeposit(content, amount, 'SIM_' + Date.now(), 'TEST_ADMIN');
+  res.json(result);
+});
+
+// Xác nhận giao dịch nạp tiền (Hỗ trợ Admin kiểm tra thủ công)
 app.post('/api/wallet/confirm-deposit', (req, res) => {
-  return res.status(403).json({
+  const { txId } = req.body;
+  const transactions = readJSON(TRANSACTIONS_FILE, []);
+  const tx = transactions.find(t => t.id === txId || t.code === txId);
+  if (!tx) {
+    return res.status(404).json({ success: false, message: 'Không tìm thấy giao dịch!' });
+  }
+
+  if (tx.status === 'COMPLETED') {
+    return res.json({ success: true, message: 'Giao dịch đã được duyệt thành công!', status: 'COMPLETED' });
+  }
+
+  return res.json({
     success: false,
-    message: 'Tính năng tự động duyệt tiền đã được tắt. Đơn nạp sẽ do Admin HQK kiểm tra và duyệt thủ công qua Bảng Quản Trị!'
+    status: tx.status,
+    message: 'Hệ thống đang chờ nhận tiền từ ngân hàng. Sau khi bạn chuyển khoản, tiền sẽ tự động vào ví!'
   });
 });
 

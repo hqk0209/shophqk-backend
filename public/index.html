@@ -543,6 +543,55 @@
             Lưu Cấu Hình VietQR
           </button>
         </form>
+
+        <!-- KHUNG CẤU HÌNH TỰ ĐỘNG DUYỆT TỪ NGÂN HÀNG & VÍ ĐIỆN TỬ -->
+        <div class="mt-5 pt-4 border-t border-slate-800 space-y-3 max-w-md mx-auto">
+          <div class="flex items-center gap-2 text-cyan-400 font-bold text-xs">
+            <i data-lucide="zap" class="w-4 h-4"></i>
+            <span>Tự Động Duyệt Ngân Hàng & Ví Điện Tử (API Webhook)</span>
+          </div>
+          
+          <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-2 text-xs">
+            <label class="block text-[11px] text-slate-400 font-semibold">1. Đường dẫn Webhook nhận tiền (Dán vào SePay / Casso / Web2M / App MoMo):</label>
+            <div class="flex gap-1.5">
+              <input type="text" id="webhookUrlInput" readonly value="https://shophqk.onrender.com/api/webhook/payment" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-cyan-300 font-mono select-all">
+              <button type="button" onclick="copyWebhookUrl()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-semibold shrink-0 transition flex items-center gap-1">
+                <i data-lucide="copy" class="w-3.5 h-3.5"></i> Chép
+              </button>
+            </div>
+            <div class="space-y-1.5 text-[10px] text-slate-400 leading-relaxed bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/80">
+              <p>📱 <strong>Dành riêng cho Ví MoMo cá nhân:</strong></p>
+              <ul class="list-disc pl-4 space-y-1 text-slate-300">
+                <li><strong>Cách 1 (Dễ nhất - Miễn phí 100%):</strong> Cài app <em>MacroDroid</em> hoặc <em>Notification Forwarder</em> trên điện thoại Android có đăng nhập MoMo. Cài đặt tự động bắn POST tới link Webhook trên mỗi khi có thông báo nhận tiền MoMo.</li>
+                <li><strong>Cách 2 (Cổng MoMo tự động):</strong> Dùng dịch vụ cổng MoMo như <em>Web2M.com</em> hoặc <em>Thesieure</em> -> Dán link Webhook vào mục callback của MoMo.</li>
+                <li><strong>Cách 3 (SePay / Casso):</strong> Quét mã VietQR MoMo tự động nhận diện qua SePay.</li>
+              </ul>
+            </div>
+          </div>
+
+          <!-- Khung test giả lập nạp tiền tự động -->
+          <div class="p-3 bg-slate-950/80 border border-cyan-500/20 rounded-xl space-y-2.5 text-xs">
+            <div class="flex items-center justify-between">
+              <span class="font-bold text-slate-200 flex items-center gap-1 text-[11px]">
+                <i data-lucide="flask-conical" class="w-3.5 h-3.5 text-amber-400"></i> Thử Nghiệm Webhook (Giả Lập Nhận Tiền)
+              </span>
+              <span class="text-[10px] text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">Miễn phí test</span>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="block text-[10px] text-slate-400 mb-1">Mã nạp hoặc Nội dung CK:</label>
+                <input type="text" id="simContent" placeholder="VD: NAP123456" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono">
+              </div>
+              <div>
+                <label class="block text-[10px] text-slate-400 mb-1">Số tiền test (VNĐ):</label>
+                <input type="number" id="simAmount" value="50000" step="10000" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono">
+              </div>
+            </div>
+            <button type="button" onclick="testSimulateWebhook()" class="w-full py-2 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded-lg text-xs transition flex items-center justify-center gap-1">
+              <i data-lucide="play" class="w-3.5 h-3.5"></i> Bắn Thử Webhook Giả Lập
+            </button>
+          </div>
+        </div>
       </div>
 
       <!-- ADMIN TAB 7: LỊCH SỬ ĐƠN HÀNG MUA CỦA USER -->
@@ -780,21 +829,30 @@
           </div>
         </div>
 
-        <div class="bg-indigo-950/60 border border-indigo-500/30 rounded-xl p-3 text-xs text-indigo-300 flex items-start gap-2.5 text-left">
-          <i data-lucide="clock-3" class="w-4 h-4 text-amber-400 shrink-0 mt-0.5"></i>
-          <div>
-            <p class="font-bold text-white text-xs">Yêu cầu nạp đang Chờ Duyệt</p>
-            <p class="text-slate-400 text-[11px] mt-0.5 leading-relaxed">Admin HQK sẽ kiểm tra và duyệt cộng tiền vào ví cho bạn trong chốc lát.</p>
+        <!-- Khung trạng thái tự động duyệt Realtime -->
+        <div id="depositLiveStatusBox" class="bg-indigo-950/70 border border-cyan-500/30 rounded-xl p-3 text-xs text-indigo-200 flex items-start gap-2.5 text-left transition-all">
+          <span class="flex h-3 w-3 relative shrink-0 mt-0.5">
+            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+            <span class="relative inline-flex rounded-full h-3 w-3 bg-cyan-500"></span>
+          </span>
+          <div class="flex-1">
+            <p id="depositStatusTitle" class="font-bold text-white text-xs flex items-center gap-1.5">
+              <span>Đang chờ chuyển tiền...</span>
+              <span class="text-[10px] text-cyan-400 bg-cyan-500/10 px-1.5 py-0.2 rounded-full font-normal">Tự duyệt 24/7</span>
+            </p>
+            <p id="depositStatusDesc" class="text-slate-400 text-[11px] mt-0.5 leading-relaxed">Sau khi bạn quét mã VietQR và xác nhận chuyển khoản trên App Ngân Hàng/Ví, hệ thống sẽ tự động duyệt cộng tiền trong vài giây!</p>
           </div>
         </div>
 
-        <button onclick="handleFinishDeposit()" class="w-full py-2.5 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 text-white font-bold rounded-xl shadow-lg transition flex items-center justify-center gap-1.5 text-xs">
-          <i data-lucide="check" class="w-4 h-4"></i> Đã Chuyển Khoản Xong
-        </button>
+        <div id="depositActionBtns" class="space-y-2">
+          <button type="button" onclick="checkManualDepositStatus()" class="w-full py-2.5 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 text-white font-bold rounded-xl shadow-lg transition flex items-center justify-center gap-1.5 text-xs">
+            <i data-lucide="refresh-cw" class="w-4 h-4"></i> Kiểm Tra Trạng Thái Ngay
+          </button>
 
-        <button onclick="backToStep1()" class="text-xs text-slate-400 hover:text-white transition">
-          ← Chọn lại số tiền khác
-        </button>
+          <button type="button" onclick="backToStep1()" class="text-xs text-slate-400 hover:text-white transition">
+            ← Chọn lại số tiền khác
+          </button>
+        </div>
       </div>
     </div>
   </div>

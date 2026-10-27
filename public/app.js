@@ -165,6 +165,9 @@ function openModal(id) {
 function closeModal(id) {
   const m = document.getElementById(id);
   if (m) m.classList.add('hidden');
+  if (id === 'depositModal') {
+    stopDepositPolling();
+  }
 }
 
 // ---------------- CẤU HÌNH SHOP DYNAMIC ----------------
@@ -1498,8 +1501,115 @@ function selectAmount(val) {
 }
 
 function backToStep1() {
+  stopDepositPolling();
   document.getElementById('depositStep1').classList.remove('hidden');
   document.getElementById('depositStep2').classList.add('hidden');
+}
+
+let depositPollingInterval = null;
+
+function stopDepositPolling() {
+  if (depositPollingInterval) {
+    clearInterval(depositPollingInterval);
+    depositPollingInterval = null;
+  }
+}
+
+function startDepositStatusPolling(txId, amount) {
+  stopDepositPolling();
+  
+  const box = document.getElementById('depositLiveStatusBox');
+  const title = document.getElementById('depositStatusTitle');
+  const desc = document.getElementById('depositStatusDesc');
+  const actionBtns = document.getElementById('depositActionBtns');
+  
+  if (box) {
+    box.className = 'bg-indigo-950/70 border border-cyan-500/30 rounded-xl p-3 text-xs text-indigo-200 flex items-start gap-2.5 text-left transition-all';
+  }
+  if (title) {
+    title.innerHTML = `<span>Đang chờ chuyển tiền...</span> <span class="text-[10px] text-cyan-400 bg-cyan-500/10 px-1.5 py-0.2 rounded-full font-normal">Tự duyệt 24/7</span>`;
+  }
+  if (desc) {
+    desc.innerText = 'Sau khi bạn quét mã VietQR và xác nhận chuyển khoản trên App Ngân Hàng/Ví, hệ thống sẽ tự động duyệt cộng tiền trong vài giây!';
+  }
+  if (actionBtns) {
+    actionBtns.innerHTML = `
+      <button type="button" onclick="checkManualDepositStatus()" class="w-full py-2.5 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 text-white font-bold rounded-xl shadow-lg transition flex items-center justify-center gap-1.5 text-xs">
+        <i data-lucide="refresh-cw" class="w-4 h-4"></i> Kiểm Tra Trạng Thái Ngay
+      </button>
+      <button type="button" onclick="backToStep1()" class="text-xs text-slate-400 hover:text-white transition">
+        ← Chọn lại số tiền khác
+      </button>
+    `;
+    if (window.lucide) lucide.createIcons();
+  }
+
+  // Polling mỗi 2.5 giây
+  depositPollingInterval = setInterval(async () => {
+    try {
+      const res = await fetch(`/api/wallet/deposit-status/${txId}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      
+      if (data.success && data.status === 'COMPLETED') {
+        stopDepositPolling();
+        onDepositSuccessApproved(data.amount || amount);
+      }
+    } catch (e) {
+      // Tiếp tục lắng nghe
+    }
+  }, 2500);
+}
+
+function onDepositSuccessApproved(amount) {
+  const box = document.getElementById('depositLiveStatusBox');
+  const title = document.getElementById('depositStatusTitle');
+  const desc = document.getElementById('depositStatusDesc');
+  const actionBtns = document.getElementById('depositActionBtns');
+
+  if (box) {
+    box.className = 'bg-emerald-950/80 border border-emerald-500/60 rounded-xl p-3 text-xs text-emerald-200 flex items-start gap-2.5 text-left shadow-lg shadow-emerald-500/15 animate-pulse';
+  }
+  if (title) {
+    title.innerHTML = `🎉 <span class="text-emerald-400 font-extrabold text-sm">Nạp Tiền Thành Công!</span>`;
+  }
+  if (desc) {
+    desc.innerHTML = `Hệ thống đã tự động duyệt nạp <strong class="text-white">+${Number(amount).toLocaleString('vi-VN')} VNĐ</strong> vào tài khoản <strong>${currentUser.username}</strong>!`;
+  }
+  if (actionBtns) {
+    actionBtns.innerHTML = `
+      <button type="button" onclick="closeModal('depositModal')" class="w-full py-2.5 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 text-slate-950 font-bold rounded-xl shadow-lg transition flex items-center justify-center gap-1.5 text-xs">
+        <i data-lucide="check-circle" class="w-4 h-4"></i> Hoàn Tất & Tiếp Tục Mua Sắm
+      </button>
+    `;
+    if (window.lucide) lucide.createIcons();
+  }
+
+  // Cập nhật số dư người dùng
+  if (currentUser) {
+    currentUser.balance = (Number(currentUser.balance) || 0) + Number(amount);
+    localStorage.setItem('shophqk_user', JSON.stringify(currentUser));
+    updateAuthUI();
+  }
+
+  showToast(`🎉 Nạp tiền thành công +${Number(amount).toLocaleString('vi-VN')} đ!`, 'success');
+}
+
+async function checkManualDepositStatus() {
+  if (!currentTxId) return;
+  showToast('Đang kiểm tra giao dịch với ngân hàng...', 'info');
+  try {
+    const res = await fetch(`/api/wallet/deposit-status/${currentTxId}`);
+    const data = await res.json();
+    if (data.success && data.status === 'COMPLETED') {
+      stopDepositPolling();
+      onDepositSuccessApproved(data.amount);
+    } else {
+      showToast('Hệ thống chưa nhận được tiền. Nếu vừa chuyển khoản, vui lòng đợi 5 - 10 giây để ngân hàng gửi thông báo!', 'warning');
+    }
+  } catch (err) {
+    showToast('Lỗi khi kiểm tra trạng thái.', 'error');
+  }
 }
 
 async function createVietQR() {
@@ -1524,7 +1634,7 @@ async function createVietQR() {
 
     const data = await res.json();
     if (data.success) {
-      currentTxId = data.data.txId;
+      currentTxId = data.data.id || data.data.txId || data.data.code;
       currentMemo = data.data.memo;
 
       document.getElementById('vietqrImage').src = data.data.qrUrl;
@@ -1537,6 +1647,9 @@ async function createVietQR() {
       document.getElementById('depositStep1').classList.add('hidden');
       document.getElementById('depositStep2').classList.remove('hidden');
       lucide.createIcons();
+
+      // Bắt đầu lắng nghe tự động duyệt qua Webhook
+      startDepositStatusPolling(currentTxId, amount);
     } else {
       showToast(data.message || 'Không thể tạo mã VietQR', 'error');
     }
@@ -1552,9 +1665,50 @@ function copyMemo() {
   }
 }
 
+function copyWebhookUrl() {
+  const input = document.getElementById('webhookUrlInput');
+  if (input) {
+    navigator.clipboard.writeText(input.value);
+    showToast('Đã sao chép link Webhook: ' + input.value, 'success');
+  }
+}
+
+async function testSimulateWebhook() {
+  const content = (document.getElementById('simContent')?.value || '').trim();
+  const amount = Number(document.getElementById('simAmount')?.value || 50000);
+
+  if (!content) {
+    showToast('Vui lòng nhập mã nạp hoặc nội dung chuyển khoản cần test!', 'warning');
+    return;
+  }
+
+  showToast('Đang gửi dữ liệu giả lập tới Webhook...', 'info');
+  try {
+    const res = await fetch('/api/admin/simulate-webhook', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        adminUsername: currentUser.username,
+        content: content,
+        amount: amount
+      })
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast(data.message, 'success');
+      loadAdminDeposits();
+    } else {
+      showToast(data.message, 'error');
+    }
+  } catch (err) {
+    showToast('Lỗi khi test Webhook: ' + err.message, 'error');
+  }
+}
+
 function handleFinishDeposit() {
+  stopDepositPolling();
   closeModal('depositModal');
-  showToast('Đã ghi nhận yêu cầu nạp tiền! Vui lòng chờ Admin duyệt.', 'info');
+  showToast('Đã ghi nhận yêu cầu nạp tiền! Hệ thống đang tự động duyệt tiền.', 'info');
 }
 
 // ---------------- LỊCH SỬ GIAO DỊCH ----------------

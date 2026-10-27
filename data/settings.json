@@ -9,13 +9,15 @@
   "contactTelegram": "hqk0209",
   "contactFacebook": "https://facebook.com//hqk0209",
   "logoText": "ShopHQK",
-  "bankId": "MOMO",
-  "accountNo": "0349340730",
+  "bankId": "MSB",
+  "accountNo": "96886693091220",
   "accountName": "HOANG QUOC KHANH",
   "categories": [
     "Tất cả",
     "FreeFire Thường",
     "FreeFireMax"
   ],
-  "adminUsername": "hqk"
+  "adminUsername": "hqk",
+  "autoApproveEnabled": true,
+  "webhookSecretKey": "shophqk_secret_key_2026"
 }
