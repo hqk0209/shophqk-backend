@@ -48,7 +48,7 @@
             <i data-lucide="store" class="w-4 h-4"></i> Cửa hàng
           </button>
           <button onclick="openDepositModal()" class="nav-btn px-3 py-1.5 text-xs sm:text-sm font-medium rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/60 transition flex items-center gap-1.5">
-            <i data-lucide="qr-code" class="w-4 h-4 text-cyan-400"></i> Nạp tiền VietQR
+            <i data-lucide="wallet-cards" class="w-4 h-4 text-emerald-400"></i> Nạp tiền (QR & Thẻ)
           </button>
           <button onclick="openHistoryModal()" class="nav-btn px-3 py-1.5 text-xs sm:text-sm font-medium rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/60 transition flex items-center gap-1.5">
             <i data-lucide="clock" class="w-4 h-4 text-amber-400"></i> Lịch sử
@@ -113,7 +113,7 @@
         </p>
         <div class="flex flex-wrap justify-center gap-2.5">
           <button onclick="openDepositModal()" class="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 text-white text-xs sm:text-sm font-bold rounded-xl shadow-lg shadow-indigo-500/25 transition">
-            <i data-lucide="qr-code" class="w-4 h-4"></i> Nạp tiền VietQR
+            <i data-lucide="wallet-cards" class="w-4 h-4 text-emerald-400"></i> Nạp tiền (QR & Thẻ Cào)
           </button>
           <a id="heroContactBtn" href="https://zalo.me/0349340730" target="_blank" class="inline-flex items-center gap-2 px-4 py-2.5 bg-slate-800/90 hover:bg-slate-800 text-slate-300 hover:text-white text-xs sm:text-sm font-semibold rounded-xl border border-slate-700 transition">
             <i data-lucide="message-circle" class="w-4 h-4 text-cyan-400"></i> Liên hệ CSKH
@@ -170,8 +170,8 @@
       <i data-lucide="store" class="w-5 h-5"></i>
       <span class="text-[10px] font-semibold">Cửa Hàng</span>
     </button>
-    <button onclick="openDepositModal()" class="flex flex-col items-center text-slate-400 hover:text-cyan-400 gap-0.5">
-      <i data-lucide="qr-code" class="w-5 h-5 text-cyan-400"></i>
+    <button onclick="openDepositModal()" class="flex flex-col items-center text-slate-400 hover:text-emerald-400 gap-0.5">
+      <i data-lucide="wallet-cards" class="w-5 h-5 text-emerald-400"></i>
       <span class="text-[10px] font-semibold">Nạp Tiền</span>
     </button>
     <button id="mobileNavAdminBtn" onclick="openAdminPanel()" class="hidden flex flex-col items-center text-amber-400 gap-0.5">
@@ -231,6 +231,9 @@
         </button>
         <button id="admTabSettings" onclick="switchAdminTab('settings')" class="admin-tab shrink-0 px-3 py-1.5 rounded-xl text-xs font-medium bg-slate-800 text-slate-300 hover:text-white transition flex items-center gap-1">
           <i data-lucide="qr-code" class="w-3.5 h-3.5 text-amber-400"></i> Cấu hình VietQR
+        </button>
+        <button id="admTabCards" onclick="switchAdminTab('cards')" class="admin-tab shrink-0 px-3 py-1.5 rounded-xl text-xs font-medium bg-slate-800 text-slate-300 hover:text-white transition flex items-center gap-1">
+          <i data-lucide="credit-card" class="w-3.5 h-3.5 text-amber-400"></i> Thẻ Cào & GachTheFast <span id="cardPendingBadge" class="hidden text-[10px] bg-rose-500 text-white px-1.5 py-0.2 rounded-full">0</span>
         </button>
       </div>
 
@@ -645,6 +648,130 @@
           </table>
         </div>
       </div>
+
+      <!-- ADMIN TAB 8: GẠCH THẺ CÀO & KẾT NỐI GACHTHEFAST.COM -->
+      <div id="admSectionCards" class="hidden flex-1 overflow-y-auto space-y-4 pr-1">
+        <!-- 1. Cấu hình kết nối GachTheFast.Com -->
+        <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3.5">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2 text-amber-400 font-bold text-xs sm:text-sm">
+              <i data-lucide="zap" class="w-4 h-4"></i>
+              <span>Cấu Hình Cổng Gạch Thẻ Cào (GachTheFast.Com)</span>
+            </div>
+            <label class="flex items-center gap-1.5 cursor-pointer">
+              <input type="checkbox" id="admCfgCardAutoEnabled" checked class="w-4 h-4 accent-amber-500 rounded">
+              <span class="text-xs text-slate-300 font-medium">Bật gạch thẻ tự động</span>
+            </label>
+          </div>
+
+          <form id="adminCardSettingsForm" onsubmit="handleSaveCardSettings(event)" class="space-y-3">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label class="block text-xs font-semibold text-slate-400 mb-1">Partner ID (Mã kết nối API)</label>
+                <input type="text" id="admCfgGtfPartnerId" placeholder="Lấy trong menu KẾT NỐI API trên gachthefast.com" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-amber-500">
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-400 mb-1">Partner Key (Khóa bí mật Secret Key)</label>
+                <input type="text" id="admCfgGtfPartnerKey" placeholder="Khóa bảo mật riêng của tài khoản" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-amber-500">
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
+              <div>
+                <label class="block text-xs font-semibold text-slate-400 mb-1">Tỷ lệ thực nhận cho thành viên (%)</label>
+                <input type="number" id="admCfgCardDiscountRate" value="85" min="1" max="100" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-amber-500">
+                <span class="text-[10px] text-slate-500">VD: Đặt 85 = Khách nạp thẻ 100k sẽ nhận được 85k vào tài khoản shop.</span>
+              </div>
+              <div class="pt-2 sm:pt-0">
+                <button type="submit" class="w-full py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl shadow-lg transition text-xs flex items-center justify-center gap-1.5">
+                  <i data-lucide="save" class="w-4 h-4"></i> Lưu Cấu Hình Gạch Thẻ
+                </button>
+              </div>
+            </div>
+          </form>
+
+          <!-- Ô Webhook Callback URL -->
+          <div class="p-3 bg-slate-900/80 border border-amber-500/20 rounded-xl space-y-2 text-xs">
+            <label class="block text-[11px] text-slate-300 font-semibold">Đường dẫn Callback URL (Dán vào mục Callback/Webhook trên GachTheFast.Com):</label>
+            <div class="flex gap-1.5">
+              <input type="text" id="cardWebhookUrlInput" readonly value="https://shophqk.onrender.com/api/webhook/card" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-amber-300 font-mono select-all">
+              <button type="button" onclick="copyCardWebhookUrl()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-semibold shrink-0 transition flex items-center gap-1">
+                <i data-lucide="copy" class="w-3.5 h-3.5"></i> Chép
+              </button>
+            </div>
+            <div class="text-[10px] text-slate-400 leading-relaxed bg-slate-950/60 p-2.5 rounded-lg border border-slate-800">
+              <p class="font-semibold text-slate-300 mb-1">💡 Các bước kích hoạt đổi thẻ trên GachTheFast.Com:</p>
+              <ol class="list-decimal pl-4 space-y-0.5">
+                <li>Đăng nhập <a href="https://gachthefast.com" target="_blank" class="text-amber-400 underline">GachTheFast.Com</a> -> Chọn menu <strong>"KẾT NỐI API"</strong>.</li>
+                <li>Copy <strong>Partner ID</strong> & <strong>Partner Key</strong> dán vào 2 ô bên trên và bấm Lưu.</li>
+                <li>Dán link <strong>Callback URL</strong> trên vào ô Callback URL trên GachTheFast để nhận kết quả tự động!</li>
+              </ol>
+            </div>
+          </div>
+
+          <!-- Công cụ test giả lập duyệt thẻ cào -->
+          <div class="p-3 bg-slate-900/60 border border-slate-800 rounded-xl space-y-2 text-xs">
+            <div class="flex items-center justify-between">
+              <span class="font-bold text-slate-200 flex items-center gap-1 text-[11px]">
+                <i data-lucide="flask-conical" class="w-3.5 h-3.5 text-amber-400"></i> Giả Lập Gạch Thẻ Tự Động (Test Miễn Phí)
+              </span>
+              <span class="text-[10px] text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">Không cần thẻ thật</span>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <div class="sm:col-span-2">
+                <input type="text" id="simCardRequestId" placeholder="Nhập mã đơn thẻ cần test (VD: CARD_...)" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono">
+              </div>
+              <div>
+                <select id="simCardStatus" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white">
+                  <option value="1">Duyệt Thành Công (Status 1)</option>
+                  <option value="2">Sai Mệnh Giá (Status 2)</option>
+                  <option value="3">Thẻ Lỗi / Đã nạp (Status 3)</option>
+                </select>
+              </div>
+            </div>
+            <button type="button" onclick="testSimulateCardCallback()" class="w-full py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded-lg text-xs transition flex items-center justify-center gap-1">
+              <i data-lucide="play" class="w-3.5 h-3.5"></i> Bắn Callback Giả Lập
+            </button>
+          </div>
+        </div>
+
+        <!-- 2. Danh sách & Quản lý thẻ cào khách nạp -->
+        <div class="space-y-3">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-slate-950 p-3 rounded-xl border border-slate-800">
+            <div>
+              <h4 class="text-xs font-bold text-white flex items-center gap-1.5">
+                <i data-lucide="credit-card" class="w-4 h-4 text-amber-400"></i> Danh Sách Thẻ Cào Đã Nạp
+              </h4>
+              <p class="text-[11px] text-slate-400">Quản lý toàn bộ thẻ cào thành viên gửi lên hệ thống</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <input type="text" id="adminCardSearch" oninput="filterAdminCards()" placeholder="Tìm theo user / serial / nhà mạng..." class="bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1 text-xs text-slate-200 focus:outline-none focus:border-amber-500 w-full sm:w-56">
+              <button type="button" onclick="loadAdminCards()" class="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition" title="Tải lại">
+                <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+              </button>
+            </div>
+          </div>
+
+          <div class="overflow-x-auto border border-slate-800 rounded-xl">
+            <table class="w-full text-left text-xs text-slate-300">
+              <thead class="bg-slate-950 text-slate-400 text-[10px] uppercase font-bold sticky top-0 border-b border-slate-800">
+                <tr>
+                  <th class="p-2.5">Thời Gian / Mã Đơn</th>
+                  <th class="p-2.5">Người Nạp</th>
+                  <th class="p-2.5">Nhà Mạng / Mệnh Giá</th>
+                  <th class="p-2.5">Serial / Mã PIN</th>
+                  <th class="p-2.5 text-right">Thực Nhận</th>
+                  <th class="p-2.5 text-center">Trạng Thái</th>
+                  <th class="p-2.5 text-center">Thao Tác</th>
+                </tr>
+              </thead>
+              <tbody id="adminCardsTable" class="divide-y divide-slate-800/60 font-sans">
+                <!-- Rendered by JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -761,97 +888,205 @@
         <i data-lucide="x" class="w-5 h-5"></i>
       </button>
 
-      <div class="flex items-center gap-2.5 mb-4">
+      <div class="flex items-center gap-2.5 mb-3">
         <div class="w-9 h-9 rounded-xl bg-cyan-500/10 text-cyan-400 flex items-center justify-center border border-cyan-500/20">
-          <i data-lucide="qr-code" class="w-5 h-5"></i>
+          <i data-lucide="wallet-cards" class="w-5 h-5"></i>
         </div>
         <div>
-          <h3 class="text-base font-bold text-white">Nạp Tiền VietQR</h3>
-          <p class="text-[11px] text-slate-400">Quét mã chuyển khoản liên ngân hàng 24/7</p>
+          <h3 class="text-base font-bold text-white">Nạp Tiền Vào Ví</h3>
+          <p class="text-[11px] text-slate-400">Tự động duyệt 24/7 qua VietQR hoặc Thẻ Cào</p>
         </div>
       </div>
 
-      <!-- Step 1: Chọn số tiền -->
-      <div id="depositStep1" class="space-y-3.5">
-        <div>
-          <label class="block text-xs font-semibold text-slate-400 mb-1.5">Chọn nhanh số tiền nạp:</label>
-          <div class="grid grid-cols-3 gap-1.5">
-            <button type="button" onclick="selectAmount(20000)" class="amt-btn px-2.5 py-2 rounded-xl bg-slate-950 border border-slate-800 hover:border-cyan-500 text-xs font-semibold transition">20.000đ</button>
-            <button type="button" onclick="selectAmount(50000)" class="amt-btn px-2.5 py-2 rounded-xl bg-slate-950 border border-slate-800 hover:border-cyan-500 text-xs font-semibold transition">50.000đ</button>
-            <button type="button" onclick="selectAmount(100000)" class="amt-btn px-2.5 py-2 rounded-xl bg-slate-950 border border-slate-800 hover:border-cyan-500 text-xs font-semibold transition">100.000đ</button>
-            <button type="button" onclick="selectAmount(200000)" class="amt-btn px-2.5 py-2 rounded-xl bg-slate-950 border border-slate-800 hover:border-cyan-500 text-xs font-semibold transition">200.000đ</button>
-            <button type="button" onclick="selectAmount(500000)" class="amt-btn px-2.5 py-2 rounded-xl bg-slate-950 border border-slate-800 hover:border-cyan-500 text-xs font-semibold transition">500.000đ</button>
-            <button type="button" onclick="selectAmount(1000000)" class="amt-btn px-2.5 py-2 rounded-xl bg-slate-950 border border-slate-800 hover:border-cyan-500 text-xs font-semibold transition">1.000.000đ</button>
-          </div>
-        </div>
-
-        <div>
-          <label class="block text-xs font-semibold text-slate-400 mb-1">Hoặc nhập số tiền khác (VNĐ):</label>
-          <input type="number" id="customAmount" min="10000" step="5000" placeholder="Tối thiểu 10.000đ" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-100 focus:outline-none focus:border-cyan-500">
-        </div>
-
-        <button onclick="createVietQR()" class="w-full py-2.5 bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 text-white font-bold rounded-xl shadow-lg transition flex items-center justify-center gap-1.5 text-xs">
-          <i data-lucide="qr-code" class="w-4 h-4"></i> Tạo Mã VietQR Thanh Toán
+      <!-- Segmented Tab Switcher (VietQR / Thẻ Cào) -->
+      <div class="flex rounded-xl bg-slate-950 p-1 border border-slate-800 mb-4 gap-1">
+        <button type="button" id="depTabVietQR" onclick="switchDepositMode('vietqr')" class="flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 bg-gradient-to-r from-cyan-600 to-indigo-600 text-white shadow">
+          <i data-lucide="qr-code" class="w-3.5 h-3.5"></i> Chuyển Khoản VietQR
+        </button>
+        <button type="button" id="depTabCard" onclick="switchDepositMode('card')" class="flex-1 py-1.5 px-2 rounded-lg text-xs font-medium text-slate-400 hover:text-white hover:bg-slate-800/60 transition flex items-center justify-center gap-1.5">
+          <i data-lucide="credit-card" class="w-3.5 h-3.5 text-amber-400"></i> Nạp Thẻ Cào
         </button>
       </div>
 
-      <!-- Step 2: Hiển thị mã QR -->
-      <div id="depositStep2" class="hidden space-y-3.5 text-center">
-        <div class="bg-white p-2.5 rounded-2xl inline-block shadow-xl border-4 border-cyan-500/30">
-          <img id="vietqrImage" src="" alt="Mã VietQR" class="w-56 h-56 object-contain mx-auto rounded-lg">
-        </div>
-
-        <div class="bg-slate-950 border border-slate-800 rounded-xl p-3 text-left space-y-1.5 text-xs">
-          <div class="flex justify-between">
-            <span class="text-slate-400">Ngân hàng:</span>
-            <span id="qrBankName" class="font-bold text-white">MB Bank</span>
-          </div>
-          <div class="flex justify-between">
-            <span class="text-slate-400">Số tài khoản:</span>
-            <span id="qrAccountNo" class="font-bold text-white font-mono">0987654321</span>
-          </div>
-          <div class="flex justify-between">
-            <span class="text-slate-400">Chủ tài khoản:</span>
-            <span id="qrAccountName" class="font-bold text-white">SHOPHQK STORE</span>
-          </div>
-          <div class="flex justify-between">
-            <span class="text-slate-400">Số tiền:</span>
-            <span id="qrAmountText" class="font-bold text-emerald-400 text-sm">0 VNĐ</span>
-          </div>
-          <div class="flex justify-between items-center pt-1.5 border-t border-slate-800">
-            <span class="text-slate-400">Nội dung CK:</span>
-            <div class="flex items-center gap-1.5">
-              <span id="qrMemo" class="font-mono font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">NAP...</span>
-              <button onclick="copyMemo()" title="Sao chép nội dung" class="p-1 hover:bg-slate-800 rounded text-slate-300">
-                <i data-lucide="copy" class="w-3.5 h-3.5"></i>
-              </button>
+      <!-- PHẦN CHUYỂN KHOẢN VIETQR -->
+      <div id="vietqrDepositBox" class="space-y-3.5">
+        <!-- Step 1: Chọn số tiền -->
+        <div id="depositStep1" class="space-y-3.5">
+          <div>
+            <label class="block text-xs font-semibold text-slate-400 mb-1.5">Chọn nhanh số tiền nạp:</label>
+            <div class="grid grid-cols-3 gap-1.5">
+              <button type="button" onclick="selectAmount(20000)" class="amt-btn px-2.5 py-2 rounded-xl bg-slate-950 border border-slate-800 hover:border-cyan-500 text-xs font-semibold transition">20.000đ</button>
+              <button type="button" onclick="selectAmount(50000)" class="amt-btn px-2.5 py-2 rounded-xl bg-slate-950 border border-slate-800 hover:border-cyan-500 text-xs font-semibold transition">50.000đ</button>
+              <button type="button" onclick="selectAmount(100000)" class="amt-btn px-2.5 py-2 rounded-xl bg-slate-950 border border-slate-800 hover:border-cyan-500 text-xs font-semibold transition">100.000đ</button>
+              <button type="button" onclick="selectAmount(200000)" class="amt-btn px-2.5 py-2 rounded-xl bg-slate-950 border border-slate-800 hover:border-cyan-500 text-xs font-semibold transition">200.000đ</button>
+              <button type="button" onclick="selectAmount(500000)" class="amt-btn px-2.5 py-2 rounded-xl bg-slate-950 border border-slate-800 hover:border-cyan-500 text-xs font-semibold transition">500.000đ</button>
+              <button type="button" onclick="selectAmount(1000000)" class="amt-btn px-2.5 py-2 rounded-xl bg-slate-950 border border-slate-800 hover:border-cyan-500 text-xs font-semibold transition">1.000.000đ</button>
             </div>
           </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-slate-400 mb-1">Hoặc nhập số tiền khác (VNĐ):</label>
+            <input type="number" id="customAmount" min="10000" step="5000" placeholder="Tối thiểu 10.000đ" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-100 focus:outline-none focus:border-cyan-500">
+          </div>
+
+          <button onclick="createVietQR()" class="w-full py-2.5 bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 text-white font-bold rounded-xl shadow-lg transition flex items-center justify-center gap-1.5 text-xs">
+            <i data-lucide="qr-code" class="w-4 h-4"></i> Tạo Mã VietQR Thanh Toán
+          </button>
         </div>
 
-        <!-- Khung trạng thái tự động duyệt Realtime -->
-        <div id="depositLiveStatusBox" class="bg-indigo-950/70 border border-cyan-500/30 rounded-xl p-3 text-xs text-indigo-200 flex items-start gap-2.5 text-left transition-all">
-          <span class="flex h-3 w-3 relative shrink-0 mt-0.5">
-            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
-            <span class="relative inline-flex rounded-full h-3 w-3 bg-cyan-500"></span>
-          </span>
-          <div class="flex-1">
-            <p id="depositStatusTitle" class="font-bold text-white text-xs flex items-center gap-1.5">
-              <span>Đang chờ chuyển tiền...</span>
-              <span class="text-[10px] text-cyan-400 bg-cyan-500/10 px-1.5 py-0.2 rounded-full font-normal">Tự duyệt 24/7</span>
-            </p>
-            <p id="depositStatusDesc" class="text-slate-400 text-[11px] mt-0.5 leading-relaxed">Sau khi bạn quét mã VietQR và xác nhận chuyển khoản trên App Ngân Hàng/Ví, hệ thống sẽ tự động duyệt cộng tiền trong vài giây!</p>
+        <!-- Step 2: Hiển thị mã QR -->
+        <div id="depositStep2" class="hidden space-y-3.5 text-center">
+          <div class="bg-white p-2.5 rounded-2xl inline-block shadow-xl border-4 border-cyan-500/30">
+            <img id="vietqrImage" src="" alt="Mã VietQR" class="w-56 h-56 object-contain mx-auto rounded-lg">
+          </div>
+
+          <div class="bg-slate-950 border border-slate-800 rounded-xl p-3 text-left space-y-1.5 text-xs">
+            <div class="flex justify-between">
+              <span class="text-slate-400">Ngân hàng:</span>
+              <span id="qrBankName" class="font-bold text-white">MB Bank</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-slate-400">Số tài khoản:</span>
+              <span id="qrAccountNo" class="font-bold text-white font-mono">0987654321</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-slate-400">Chủ tài khoản:</span>
+              <span id="qrAccountName" class="font-bold text-white">SHOPHQK STORE</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-slate-400">Số tiền:</span>
+              <span id="qrAmountText" class="font-bold text-emerald-400 text-sm">0 VNĐ</span>
+            </div>
+            <div class="flex justify-between items-center pt-1.5 border-t border-slate-800">
+              <span class="text-slate-400">Nội dung CK:</span>
+              <div class="flex items-center gap-1.5">
+                <span id="qrMemo" class="font-mono font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">NAP...</span>
+                <button onclick="copyMemo()" title="Sao chép nội dung" class="p-1 hover:bg-slate-800 rounded text-slate-300">
+                  <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Khung trạng thái tự động duyệt Realtime -->
+          <div id="depositLiveStatusBox" class="bg-indigo-950/70 border border-cyan-500/30 rounded-xl p-3 text-xs text-indigo-200 flex items-start gap-2.5 text-left transition-all">
+            <span class="flex h-3 w-3 relative shrink-0 mt-0.5">
+              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+              <span class="relative inline-flex rounded-full h-3 w-3 bg-cyan-500"></span>
+            </span>
+            <div class="flex-1">
+              <p id="depositStatusTitle" class="font-bold text-white text-xs flex items-center gap-1.5">
+                <span>Đang chờ chuyển tiền...</span>
+                <span class="text-[10px] text-cyan-400 bg-cyan-500/10 px-1.5 py-0.2 rounded-full font-normal">Tự duyệt 24/7</span>
+              </p>
+              <p id="depositStatusDesc" class="text-slate-400 text-[11px] mt-0.5 leading-relaxed">Sau khi bạn quét mã VietQR và xác nhận chuyển khoản trên App Ngân Hàng/Ví, hệ thống sẽ tự động duyệt cộng tiền trong vài giây!</p>
+            </div>
+          </div>
+
+          <div id="depositActionBtns" class="space-y-2">
+            <button type="button" onclick="checkManualDepositStatus()" class="w-full py-2.5 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 text-white font-bold rounded-xl shadow-lg transition flex items-center justify-center gap-1.5 text-xs">
+              <i data-lucide="refresh-cw" class="w-4 h-4"></i> Kiểm Tra Trạng Thái Ngay
+            </button>
+
+            <button type="button" onclick="backToStep1()" class="text-xs text-slate-400 hover:text-white transition">
+              ← Chọn lại số tiền khác
+            </button>
           </div>
         </div>
+      </div>
 
-        <div id="depositActionBtns" class="space-y-2">
-          <button type="button" onclick="checkManualDepositStatus()" class="w-full py-2.5 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 text-white font-bold rounded-xl shadow-lg transition flex items-center justify-center gap-1.5 text-xs">
-            <i data-lucide="refresh-cw" class="w-4 h-4"></i> Kiểm Tra Trạng Thái Ngay
-          </button>
+      <!-- PHẦN NẠP THẺ CÀO (GACHTHEFAST.COM DUYỆT TỰ ĐỘNG) -->
+      <div id="cardDepositBox" class="hidden space-y-3.5">
+        <form id="cardDepositForm" onsubmit="handleCardDepositSubmit(event)" class="space-y-3">
+          <!-- Chọn nhà mạng -->
+          <div>
+            <label class="block text-xs font-semibold text-slate-400 mb-1.5">Chọn loại thẻ / Nhà mạng:</label>
+            <div class="grid grid-cols-4 gap-1.5" id="cardTelcoSelector">
+              <button type="button" onclick="selectCardTelco('VIETTEL')" class="card-telco-btn active px-2 py-1.5 rounded-xl bg-slate-950 border border-amber-500 text-amber-400 text-xs font-bold transition text-center shadow-sm">Viettel</button>
+              <button type="button" onclick="selectCardTelco('VINAPHONE')" class="card-telco-btn px-2 py-1.5 rounded-xl bg-slate-950 border border-slate-800 hover:border-amber-500 text-slate-300 text-xs font-semibold transition text-center">Vina</button>
+              <button type="button" onclick="selectCardTelco('MOBIFONE')" class="card-telco-btn px-2 py-1.5 rounded-xl bg-slate-950 border border-slate-800 hover:border-amber-500 text-slate-300 text-xs font-semibold transition text-center">Mobi</button>
+              <button type="button" onclick="selectCardTelco('VIETNAMOBILE')" class="card-telco-btn px-2 py-1.5 rounded-xl bg-slate-950 border border-slate-800 hover:border-amber-500 text-slate-300 text-xs font-semibold transition text-center">VNM</button>
+              <button type="button" onclick="selectCardTelco('GARENA')" class="card-telco-btn px-2 py-1.5 rounded-xl bg-slate-950 border border-slate-800 hover:border-amber-500 text-slate-300 text-xs font-semibold transition text-center">Garena</button>
+              <button type="button" onclick="selectCardTelco('ZING')" class="card-telco-btn px-2 py-1.5 rounded-xl bg-slate-950 border border-slate-800 hover:border-amber-500 text-slate-300 text-xs font-semibold transition text-center">Zing</button>
+              <button type="button" onclick="selectCardTelco('GATE')" class="card-telco-btn px-2 py-1.5 rounded-xl bg-slate-950 border border-slate-800 hover:border-amber-500 text-slate-300 text-xs font-semibold transition text-center">Gate</button>
+              <button type="button" onclick="selectCardTelco('VCOIN')" class="card-telco-btn px-2 py-1.5 rounded-xl bg-slate-950 border border-slate-800 hover:border-amber-500 text-slate-300 text-xs font-semibold transition text-center">Vcoin</button>
+            </div>
+            <input type="hidden" id="cardTelcoInput" value="VIETTEL">
+          </div>
 
-          <button type="button" onclick="backToStep1()" class="text-xs text-slate-400 hover:text-white transition">
-            ← Chọn lại số tiền khác
+          <!-- Chọn mệnh giá -->
+          <div>
+            <label class="block text-xs font-semibold text-slate-400 mb-1">Mệnh giá thẻ cào:</label>
+            <select id="cardAmountSelect" onchange="updateCardReceiveAmount()" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500 font-semibold">
+              <option value="10000">10.000 VNĐ</option>
+              <option value="20000">20.000 VNĐ</option>
+              <option value="30000">30.000 VNĐ</option>
+              <option value="50000">50.000 VNĐ</option>
+              <option value="100000" selected>100.000 VNĐ</option>
+              <option value="200000">200.000 VNĐ</option>
+              <option value="300000">300.000 VNĐ</option>
+              <option value="500000">500.000 VNĐ</option>
+              <option value="1000000">1.000.000 VNĐ</option>
+            </select>
+          </div>
+
+          <!-- Thông báo thực nhận -->
+          <div class="bg-amber-500/10 border border-amber-500/20 rounded-xl p-2.5 flex items-center justify-between text-xs">
+            <span class="text-slate-300 flex items-center gap-1">
+              <i data-lucide="coins" class="w-3.5 h-3.5 text-amber-400"></i> Thực nhận vào ví:
+            </span>
+            <span id="cardReceiveAmountDisplay" class="font-bold text-amber-400 text-sm">85.000 VNĐ</span>
+          </div>
+
+          <!-- Số Serial -->
+          <div>
+            <label class="block text-xs font-semibold text-slate-400 mb-1">Số Serial (In trên thẻ)</label>
+            <input type="text" id="cardSerialInput" required placeholder="Nhập dãy số Serial..." class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white font-mono focus:outline-none focus:border-amber-500 uppercase tracking-wider">
+          </div>
+
+          <!-- Mã Thẻ (PIN) -->
+          <div>
+            <label class="block text-xs font-semibold text-slate-400 mb-1">Mã thẻ (Dưới lớp tráng bạc)</label>
+            <input type="text" id="cardCodeInput" required placeholder="Nhập mã nạp PIN..." class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white font-mono focus:outline-none focus:border-amber-500 tracking-wider">
+          </div>
+
+          <p class="text-[10px] text-amber-300/80 leading-relaxed bg-slate-950/60 p-2 rounded-lg border border-slate-800">
+            ⚠️ <strong>Lưu ý:</strong> Vui lòng chọn chính xác nhà mạng và mệnh giá. Nếu chọn sai mệnh giá, nhà mạng sẽ phạt theo quy định gạch thẻ tự động.
+          </p>
+
+          <button type="submit" id="submitCardBtn" class="w-full py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold rounded-xl shadow-lg transition flex items-center justify-center gap-1.5 text-xs">
+            <i data-lucide="send" class="w-4 h-4"></i> Nạp Thẻ Ngay (Duyệt Tự Động)
           </button>
+        </form>
+
+        <!-- Khung trạng thái thẻ cào realtime -->
+        <div id="cardLiveStatusBox" class="hidden bg-slate-950 border border-amber-500/30 rounded-xl p-3 text-xs space-y-2">
+          <div class="flex items-start gap-2.5">
+            <span class="flex h-3 w-3 relative shrink-0 mt-0.5">
+              <span id="cardStatusPing" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+              <span id="cardStatusDot" class="relative inline-flex rounded-full h-3 w-3 bg-amber-500"></span>
+            </span>
+            <div class="flex-1">
+              <p id="cardStatusTitle" class="font-bold text-white text-xs">Đang kiểm tra thẻ trên GachTheFast.Com...</p>
+              <p id="cardStatusDesc" class="text-slate-400 text-[11px] mt-0.5">Hệ thống đang kết nối nhà mạng để gạch thẻ tự động. Vui lòng chờ 5 - 30 giây.</p>
+            </div>
+          </div>
+          <button type="button" onclick="refreshCardStatus()" class="w-full py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-semibold transition flex items-center justify-center gap-1">
+            <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Kiểm Tra Trạng Thái
+          </button>
+        </div>
+
+        <!-- Lịch sử nạp thẻ gần đây của tài khoản -->
+        <div class="pt-2 border-t border-slate-800/80">
+          <div class="flex items-center justify-between mb-1.5">
+            <span class="text-[11px] font-bold text-slate-400 flex items-center gap-1">
+              <i data-lucide="clock" class="w-3 h-3 text-amber-400"></i> Lịch Sử Thẻ Cào Đã Gửi
+            </span>
+            <button type="button" onclick="loadUserCardHistory()" class="text-[10px] text-amber-400 hover:underline">Làm mới</button>
+          </div>
+          <div id="userCardHistoryList" class="space-y-1.5 max-h-36 overflow-y-auto pr-0.5 text-xs">
+            <div class="text-center py-2 text-slate-500 text-[11px]">Chưa có yêu cầu nạp thẻ nào gần đây.</div>
+          </div>
         </div>
       </div>
     </div>

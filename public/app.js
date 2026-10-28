@@ -299,6 +299,16 @@ function fillAdminSettingsForms() {
   if (accNoInp) accNoInp.value = s.accountNo || '';
   const accNameInp = document.getElementById('admCfgAccountName');
   if (accNameInp) accNameInp.value = s.accountName || '';
+
+  // Form Thẻ Cào & GachTheFast
+  const cardAutoChk = document.getElementById('admCfgCardAutoEnabled');
+  if (cardAutoChk) cardAutoChk.checked = s.cardAutoEnabled !== false;
+  const gtfPidInp = document.getElementById('admCfgGtfPartnerId');
+  if (gtfPidInp) gtfPidInp.value = s.gachthefastPartnerId || '';
+  const gtfKeyInp = document.getElementById('admCfgGtfPartnerKey');
+  if (gtfKeyInp) gtfKeyInp.value = s.gachthefastPartnerKey || '';
+  const cardRateInp = document.getElementById('admCfgCardDiscountRate');
+  if (cardRateInp) cardRateInp.value = s.cardDiscountRate !== undefined ? s.cardDiscountRate : 85;
 }
 
 // ---------------- PRODUCTS LOGIC ----------------
@@ -1022,7 +1032,8 @@ const adminTabConfig = {
   users: { btnId: 'admTabUsers', secId: 'admSectionUsers' },
   deposits: { btnId: 'admTabDeposits', secId: 'admSectionDeposits' },
   orders: { btnId: 'admTabOrders', secId: 'admSectionOrders' },
-  settings: { btnId: 'admTabSettings', secId: 'admSectionSettings' }
+  settings: { btnId: 'admTabSettings', secId: 'admSectionSettings' },
+  cards: { btnId: 'admTabCards', secId: 'admSectionCards' }
 };
 
 function switchAdminTab(rawTab) {
@@ -1030,7 +1041,7 @@ function switchAdminTab(rawTab) {
   if (tab === 'shop_info') tab = 'shopInfo';
   if (!adminTabConfig[tab]) tab = 'product';
 
-  const tabKeys = ['product', 'categories', 'shopInfo', 'users', 'deposits', 'orders', 'settings'];
+  const tabKeys = ['product', 'categories', 'shopInfo', 'users', 'deposits', 'orders', 'settings', 'cards'];
 
   tabKeys.forEach(key => {
     const cfg = adminTabConfig[key];
@@ -1068,6 +1079,9 @@ function switchAdminTab(rawTab) {
       loadAdminDeposits();
     } else if (tab === 'orders') {
       loadAdminOrders();
+    } else if (tab === 'cards') {
+      loadAdminCards();
+      fillAdminSettingsForms();
     }
   } catch (err) {
     console.error('Lỗi khi tải tab admin:', err);
@@ -1479,14 +1493,15 @@ async function adminApproveDeposit(txId) {
   }
 }
 
-// ---------------- NẠP TIỀN QUA VIETQR (USER) ----------------
-function openDepositModal() {
+// ---------------- NẠP TIỀN QUA VIETQR & THẺ CÀO (USER) ----------------
+function openDepositModal(mode = 'vietqr') {
   if (!currentUser) {
     showToast('Vui lòng đăng nhập để nạp tiền vào tài khoản!', 'warning');
     openAuthModal('login');
     return;
   }
   backToStep1();
+  switchDepositMode(mode);
   openModal('depositModal');
 }
 
@@ -1707,8 +1722,522 @@ async function testSimulateWebhook() {
 
 function handleFinishDeposit() {
   stopDepositPolling();
+  stopCardPolling();
   closeModal('depositModal');
   showToast('Đã ghi nhận yêu cầu nạp tiền! Hệ thống đang tự động duyệt tiền.', 'info');
+}
+
+// ========================================================
+// HỆ THỐNG GẠCH THẺ CÀO (GACHTHEFAST.COM) CLIENT LOGIC
+// ========================================================
+
+let currentDepositMode = 'vietqr'; // 'vietqr' or 'card'
+let selectedCardTelco = 'VIETTEL';
+let cardPollingInterval = null;
+let currentCardTxId = null;
+
+function switchDepositMode(mode) {
+  currentDepositMode = mode;
+  const tabVqr = document.getElementById('depTabVietQR');
+  const tabCard = document.getElementById('depTabCard');
+  const boxVqr = document.getElementById('vietqrDepositBox');
+  const boxCard = document.getElementById('cardDepositBox');
+
+  if (mode === 'vietqr') {
+    if (tabVqr) {
+      tabVqr.className = 'flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 bg-gradient-to-r from-cyan-600 to-indigo-600 text-white shadow';
+    }
+    if (tabCard) {
+      tabCard.className = 'flex-1 py-1.5 px-2 rounded-lg text-xs font-medium text-slate-400 hover:text-white hover:bg-slate-800/60 transition flex items-center justify-center gap-1.5';
+    }
+    if (boxVqr) boxVqr.classList.remove('hidden');
+    if (boxCard) boxCard.classList.add('hidden');
+  } else {
+    if (tabVqr) {
+      tabVqr.className = 'flex-1 py-1.5 px-2 rounded-lg text-xs font-medium text-slate-400 hover:text-white hover:bg-slate-800/60 transition flex items-center justify-center gap-1.5';
+    }
+    if (tabCard) {
+      tabCard.className = 'flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 shadow';
+    }
+    if (boxVqr) boxVqr.classList.add('hidden');
+    if (boxCard) boxCard.classList.remove('hidden');
+    updateCardReceiveAmount();
+    loadUserCardHistory();
+  }
+
+  if (window.lucide && typeof lucide.createIcons === 'function') {
+    lucide.createIcons();
+  }
+}
+
+function selectCardTelco(telco) {
+  selectedCardTelco = telco;
+  const inp = document.getElementById('cardTelcoInput');
+  if (inp) inp.value = telco;
+
+  const buttons = document.querySelectorAll('.card-telco-btn');
+  buttons.forEach(btn => {
+    const text = btn.innerText.trim().toUpperCase();
+    if (text === telco || 
+        (telco === 'VINAPHONE' && text.includes('VINA')) ||
+        (telco === 'MOBIFONE' && text.includes('MOBI')) ||
+        (telco === 'VIETNAMOBILE' && text.includes('VNM'))) {
+      btn.className = 'card-telco-btn active px-2 py-1.5 rounded-xl bg-slate-950 border border-amber-500 text-amber-400 text-xs font-bold transition text-center shadow-sm';
+    } else {
+      btn.className = 'card-telco-btn px-2 py-1.5 rounded-xl bg-slate-950 border border-slate-800 hover:border-amber-500 text-slate-300 text-xs font-semibold transition text-center';
+    }
+  });
+}
+
+function updateCardReceiveAmount() {
+  const amtSelect = document.getElementById('cardAmountSelect');
+  const amount = Number(amtSelect?.value || 100000);
+  const rate = Number(currentSettings.cardDiscountRate !== undefined ? currentSettings.cardDiscountRate : 85);
+  const receive = Math.round(amount * (rate / 100));
+
+  const disp = document.getElementById('cardReceiveAmountDisplay');
+  if (disp) {
+    disp.innerText = `${receive.toLocaleString('vi-VN')} VNĐ`;
+  }
+}
+
+function stopCardPolling() {
+  if (cardPollingInterval) {
+    clearInterval(cardPollingInterval);
+    cardPollingInterval = null;
+  }
+}
+
+async function handleCardDepositSubmit(e) {
+  e.preventDefault();
+  if (!currentUser) {
+    showToast('Vui lòng đăng nhập để nạp thẻ cào!', 'warning');
+    openAuthModal('login');
+    return;
+  }
+
+  const telco = selectedCardTelco || document.getElementById('cardTelcoInput')?.value || 'VIETTEL';
+  const amount = Number(document.getElementById('cardAmountSelect')?.value || 0);
+  const serial = (document.getElementById('cardSerialInput')?.value || '').trim();
+  const code = (document.getElementById('cardCodeInput')?.value || '').trim();
+
+  if (!serial || !code) {
+    showToast('Vui lòng nhập đầy đủ Số Serial và Mã Thẻ!', 'warning');
+    return;
+  }
+
+  const btn = document.getElementById('submitCardBtn');
+  const originalText = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Đang gửi thẻ lên GachTheFast...';
+  if (window.lucide) lucide.createIcons();
+
+  try {
+    const res = await fetch('/api/card/deposit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: currentUser.username,
+        telco: telco,
+        amount: amount,
+        serial: serial,
+        code: code
+      })
+    });
+
+    const data = await res.json();
+    if (data.success) {
+      showToast(data.message, 'success');
+      document.getElementById('cardCodeInput').value = '';
+      currentCardTxId = data.data.txId;
+      startCardStatusPolling(currentCardTxId, data.data.estimatedReceive);
+      loadUserCardHistory();
+    } else {
+      showToast(data.message || 'Lỗi gửi thẻ cào', 'error');
+    }
+  } catch (err) {
+    showToast('Lỗi kết nối khi nạp thẻ cào: ' + err.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = originalText;
+    if (window.lucide) lucide.createIcons();
+  }
+}
+
+function startCardStatusPolling(txId, expectedAmount) {
+  stopCardPolling();
+  const box = document.getElementById('cardLiveStatusBox');
+  const title = document.getElementById('cardStatusTitle');
+  const desc = document.getElementById('cardStatusDesc');
+  const ping = document.getElementById('cardStatusPing');
+  const dot = document.getElementById('cardStatusDot');
+
+  if (box) box.classList.remove('hidden');
+  if (title) title.innerText = 'Đang kiểm tra thẻ trên GachTheFast.Com...';
+  if (desc) desc.innerText = 'Hệ thống đang kết nối nhà mạng để gạch thẻ tự động. Vui lòng chờ 5 - 30 giây.';
+  if (ping) ping.className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75';
+  if (dot) dot.className = 'relative inline-flex rounded-full h-3 w-3 bg-amber-500';
+
+  let pollCount = 0;
+  cardPollingInterval = setInterval(async () => {
+    pollCount++;
+    try {
+      const res = await fetch(`/api/card/deposit-status/${txId}`);
+      if (!res.ok) return;
+      const data = await res.json();
+
+      if (data.success && data.status === 'COMPLETED') {
+        stopCardPolling();
+        const credited = data.receiveAmount || expectedAmount;
+        if (title) title.innerHTML = `<span class="text-emerald-400 flex items-center gap-1.5"><i data-lucide="check-circle" class="w-4 h-4"></i> Nạp thẻ thành công!</span>`;
+        if (desc) desc.innerHTML = `<span class="text-emerald-300 font-bold">+${credited.toLocaleString('vi-VN')} đ</span> đã được cộng tự động vào ví của bạn!`;
+        if (ping) ping.className = 'hidden';
+        if (dot) dot.className = 'relative inline-flex rounded-full h-3 w-3 bg-emerald-500';
+
+        if (currentUser) {
+          currentUser.balance = (Number(currentUser.balance) || 0) + credited;
+          localStorage.setItem('shophqk_user', JSON.stringify(currentUser));
+          updateAuthUI();
+        }
+
+        showToast(`🎉 Nạp thẻ thành công! Bạn vừa được cộng +${credited.toLocaleString('vi-VN')} VNĐ vào ví!`, 'success');
+        loadUserCardHistory();
+        if (window.lucide) lucide.createIcons();
+      } else if (data.success && data.status === 'FAILED') {
+        stopCardPolling();
+        if (title) title.innerHTML = `<span class="text-rose-400 flex items-center gap-1.5"><i data-lucide="alert-triangle" class="w-4 h-4"></i> Nạp thẻ thất bại</span>`;
+        if (desc) desc.innerText = data.note || 'Thẻ không hợp lệ, sai seri/mã thẻ hoặc đã được nạp trước đó.';
+        if (ping) ping.className = 'hidden';
+        if (dot) dot.className = 'relative inline-flex rounded-full h-3 w-3 bg-rose-500';
+        showToast('Nạp thẻ không thành công: ' + (data.note || 'Thẻ sai hoặc đã nạp'), 'error');
+        loadUserCardHistory();
+        if (window.lucide) lucide.createIcons();
+      } else if (data.success && data.status === 'WRONG_AMOUNT') {
+        stopCardPolling();
+        if (title) title.innerHTML = `<span class="text-amber-400 flex items-center gap-1.5"><i data-lucide="alert-circle" class="w-4 h-4"></i> Thẻ sai mệnh giá</span>`;
+        if (desc) desc.innerText = data.note || 'Thẻ đã được duyệt với mệnh giá thực tế từ nhà mạng.';
+        if (ping) ping.className = 'hidden';
+        if (dot) dot.className = 'relative inline-flex rounded-full h-3 w-3 bg-amber-500';
+        showToast('Thẻ sai mệnh giá! ' + (data.note || ''), 'warning');
+        loadUserCardHistory();
+        if (window.lucide) lucide.createIcons();
+      }
+
+      if (pollCount > 60) {
+        stopCardPolling();
+        if (title) title.innerText = 'Thẻ đang được nhà mạng xử lý';
+        if (desc) desc.innerText = 'Giao dịch mất nhiều thời gian hơn bình thường. Khi nhà mạng gạch xong, tiền sẽ tự động cộng vào ví.';
+      }
+    } catch (err) {
+      console.warn('Lỗi kiểm tra thẻ:', err);
+    }
+  }, 2500);
+}
+
+function refreshCardStatus() {
+  if (currentCardTxId) {
+    showToast('Đang kiểm tra lại trạng thái thẻ...', 'info');
+    fetch(`/api/card/deposit-status/${currentCardTxId}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.status === 'COMPLETED') {
+          showToast('Thẻ đã duyệt thành công!', 'success');
+        } else if (data.status === 'PENDING') {
+          showToast('Thẻ vẫn đang chờ nhà mạng duyệt tự động...', 'info');
+        } else {
+          showToast(`Trạng thái thẻ: ${data.status} - ${data.note || ''}`, 'warning');
+        }
+      });
+  }
+}
+
+async function loadUserCardHistory() {
+  if (!currentUser) return;
+  const list = document.getElementById('userCardHistoryList');
+  if (!list) return;
+
+  try {
+    const res = await fetch(`/api/card/history/${currentUser.username}`);
+    const data = await res.json();
+    if (!data.success || !Array.isArray(data.data) || data.data.length === 0) {
+      list.innerHTML = `<div class="text-center py-2 text-slate-500 text-[11px]">Chưa có yêu cầu nạp thẻ nào.</div>`;
+      return;
+    }
+
+    list.innerHTML = data.data.slice(0, 5).map(tx => {
+      let statusBadge = '<span class="text-[10px] text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded font-bold">Chờ duyệt</span>';
+      if (tx.status === 'COMPLETED') {
+        statusBadge = '<span class="text-[10px] text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded font-bold">Thành công</span>';
+      } else if (tx.status === 'FAILED') {
+        statusBadge = '<span class="text-[10px] text-rose-400 bg-rose-500/10 px-1.5 py-0.5 rounded font-bold">Thất bại</span>';
+      } else if (tx.status === 'WRONG_AMOUNT') {
+        statusBadge = '<span class="text-[10px] text-orange-400 bg-orange-500/10 px-1.5 py-0.5 rounded font-bold">Sai MG</span>';
+      }
+
+      const time = new Date(tx.createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' });
+
+      return `
+        <div class="bg-slate-900 border border-slate-800 rounded-lg p-2 flex items-center justify-between text-xs">
+          <div>
+            <div class="font-bold text-slate-200 flex items-center gap-1.5">
+              <span>${tx.telco}</span>
+              <span class="text-amber-400">${Number(tx.amount).toLocaleString('vi-VN')} đ</span>
+            </div>
+            <div class="text-[10px] text-slate-500 font-mono">Seri: ${tx.serial} | ${time}</div>
+          </div>
+          <div class="text-right">
+            ${statusBadge}
+            <div class="text-[10px] text-emerald-400 font-bold mt-0.5">+${Number(tx.receiveAmount || 0).toLocaleString('vi-VN')} đ</div>
+          </div>
+        </div>
+      `;
+    }).join('');
+  } catch (err) {
+    console.error('Lỗi tải lịch sử thẻ:', err);
+  }
+}
+
+// ---------------- ADMIN: QUẢN LÝ THẺ CÀO & CẤU HÌNH GACHTHEFAST ----------------
+let adminCardsCache = [];
+
+async function loadAdminCards() {
+  const table = document.getElementById('adminCardsTable');
+  const badge = document.getElementById('cardPendingBadge');
+  if (!table) return;
+
+  table.innerHTML = `<tr><td colspan="7" class="text-center py-6 text-slate-500 text-xs">Đang tải danh sách thẻ cào...</td></tr>`;
+
+  try {
+    const res = await fetch('/api/admin/cards');
+    const data = await res.json();
+    if (!data.success) {
+      table.innerHTML = `<tr><td colspan="7" class="text-center py-6 text-rose-400 text-xs">${data.message || 'Lỗi tải danh sách thẻ'}</td></tr>`;
+      return;
+    }
+
+    adminCardsCache = data.data || [];
+    const pendingCount = adminCardsCache.filter(c => c.status === 'PENDING').length;
+    if (badge) {
+      if (pendingCount > 0) {
+        badge.innerText = pendingCount;
+        badge.classList.remove('hidden');
+      } else {
+        badge.classList.add('hidden');
+      }
+    }
+
+    renderAdminCardsTable(adminCardsCache);
+  } catch (err) {
+    table.innerHTML = `<tr><td colspan="7" class="text-center py-6 text-rose-400 text-xs">Lỗi kết nối khi tải danh sách thẻ!</td></tr>`;
+  }
+}
+
+function renderAdminCardsTable(cards) {
+  const table = document.getElementById('adminCardsTable');
+  if (!table) return;
+
+  if (cards.length === 0) {
+    table.innerHTML = `<tr><td colspan="7" class="text-center py-8 text-slate-500 text-xs">Chưa có thẻ cào nào được gửi lên hệ thống.</td></tr>`;
+    return;
+  }
+
+  table.innerHTML = cards.map(tx => {
+    let statusBadge = `<span class="text-[10px] font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">Chờ duyệt</span>`;
+    if (tx.status === 'COMPLETED') {
+      statusBadge = `<span class="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">Thành công</span>`;
+    } else if (tx.status === 'FAILED') {
+      statusBadge = `<span class="text-[10px] font-bold text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded border border-rose-500/20" title="${tx.note || ''}">Thất bại</span>`;
+    } else if (tx.status === 'WRONG_AMOUNT') {
+      statusBadge = `<span class="text-[10px] font-bold text-orange-400 bg-orange-500/10 px-2 py-0.5 rounded border border-orange-500/20" title="${tx.note || ''}">Sai mệnh giá</span>`;
+    }
+
+    const time = new Date(tx.createdAt).toLocaleString('vi-VN');
+    const isPending = tx.status === 'PENDING';
+
+    return `
+      <tr class="hover:bg-slate-900/40 transition">
+        <td class="p-2.5">
+          <div class="font-bold text-slate-200 text-xs">${time}</div>
+          <div class="text-[10px] text-cyan-400 font-mono">${tx.code || tx.id}</div>
+        </td>
+        <td class="p-2.5 font-bold text-indigo-400 text-xs">${tx.username}</td>
+        <td class="p-2.5">
+          <span class="font-bold text-white text-xs">${tx.telco}</span>
+          <div class="text-[11px] text-amber-400 font-semibold">${Number(tx.amount).toLocaleString('vi-VN')} đ</div>
+        </td>
+        <td class="p-2.5 font-mono text-[11px]">
+          <div class="text-slate-300">S: ${tx.serial}</div>
+          <div class="text-slate-500 text-[10px]">P: ${tx.rawCode || tx.cardPinMasked || '***'}</div>
+        </td>
+        <td class="p-2.5 text-right font-bold text-emerald-400 text-xs">
+          +${Number(tx.receiveAmount || Math.round(Number(tx.amount) * 0.85)).toLocaleString('vi-VN')} đ
+        </td>
+        <td class="p-2.5 text-center">${statusBadge}</td>
+        <td class="p-2.5 text-center">
+          ${isPending ? `
+            <div class="flex items-center justify-center gap-1">
+              <button onclick="adminApproveCard('${tx.id}')" title="Duyệt tay" class="px-2 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[10px] font-bold transition flex items-center gap-1">
+                <i data-lucide="check" class="w-3 h-3"></i> Duyệt
+              </button>
+              <button onclick="adminRejectCard('${tx.id}')" title="Từ chối" class="px-2 py-1 bg-rose-600 hover:bg-rose-500 text-white rounded text-[10px] font-bold transition flex items-center gap-1">
+                <i data-lucide="x" class="w-3 h-3"></i> Hủy
+              </button>
+            </div>
+          ` : `
+            <span class="text-[10px] text-slate-500">${tx.approvedBy || 'Đã xử lý'}</span>
+          `}
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  if (window.lucide) lucide.createIcons();
+}
+
+function filterAdminCards() {
+  const query = (document.getElementById('adminCardSearch')?.value || '').trim().toLowerCase();
+  if (!query) {
+    renderAdminCardsTable(adminCardsCache);
+    return;
+  }
+  const filtered = adminCardsCache.filter(tx => 
+    (tx.username && tx.username.toLowerCase().includes(query)) ||
+    (tx.serial && tx.serial.toLowerCase().includes(query)) ||
+    (tx.telco && tx.telco.toLowerCase().includes(query)) ||
+    (tx.code && tx.code.toLowerCase().includes(query))
+  );
+  renderAdminCardsTable(filtered);
+}
+
+async function adminApproveCard(txId) {
+  const card = adminCardsCache.find(c => c.id === txId || c.code === txId);
+  const defaultAmt = card ? (card.receiveAmount || Math.round(card.amount * 0.85)) : 0;
+  const input = prompt(`Xác nhận duyệt thẻ cho ${card?.username}?\nNhập số tiền muốn cộng vào ví (VNĐ):`, defaultAmt);
+  if (input === null) return;
+  const numAmt = Number(input);
+  if (!numAmt || numAmt <= 0) {
+    showToast('Số tiền không hợp lệ!', 'warning');
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/admin/approve-card', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        adminUsername: currentUser.username,
+        txId: txId,
+        amount: numAmt
+      })
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast(data.message, 'success');
+      loadAdminCards();
+    } else {
+      showToast(data.message || 'Lỗi khi duyệt thẻ', 'error');
+    }
+  } catch (err) {
+    showToast('Lỗi kết nối khi duyệt thẻ: ' + err.message, 'error');
+  }
+}
+
+async function adminRejectCard(txId) {
+  const reason = prompt('Nhập lý do từ chối đơn thẻ này:', 'Thẻ sai mã, sai serial hoặc đã nạp trước đó');
+  if (reason === null) return;
+
+  try {
+    const res = await fetch('/api/admin/reject-card', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        adminUsername: currentUser.username,
+        txId: txId,
+        reason: reason
+      })
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast(data.message, 'success');
+      loadAdminCards();
+    } else {
+      showToast(data.message || 'Lỗi khi từ chối thẻ', 'error');
+    }
+  } catch (err) {
+    showToast('Lỗi kết nối: ' + err.message, 'error');
+  }
+}
+
+async function handleSaveCardSettings(e) {
+  e.preventDefault();
+  const cardAuto = document.getElementById('admCfgCardAutoEnabled')?.checked;
+  const partnerId = (document.getElementById('admCfgGtfPartnerId')?.value || '').trim();
+  const partnerKey = (document.getElementById('admCfgGtfPartnerKey')?.value || '').trim();
+  const discountRate = Number(document.getElementById('admCfgCardDiscountRate')?.value || 85);
+
+  try {
+    const res = await fetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        adminUsername: currentUser.username,
+        cardAutoEnabled: cardAuto,
+        gachthefastPartnerId: partnerId,
+        gachthefastPartnerKey: partnerKey,
+        cardDiscountRate: discountRate
+      })
+    });
+
+    const data = await res.json();
+    if (data.success) {
+      currentSettings = { ...currentSettings, ...data.data };
+      showToast('Đã lưu cấu hình cổng GachTheFast.Com thành công!', 'success');
+    } else {
+      showToast(data.message || 'Lỗi lưu cấu hình', 'error');
+    }
+  } catch (err) {
+    showToast('Lỗi kết nối: ' + err.message, 'error');
+  }
+}
+
+function copyCardWebhookUrl() {
+  const input = document.getElementById('cardWebhookUrlInput');
+  if (input) {
+    navigator.clipboard.writeText(input.value);
+    showToast('Đã sao chép link Callback URL: ' + input.value, 'success');
+  }
+}
+
+async function testSimulateCardCallback() {
+  const requestId = (document.getElementById('simCardRequestId')?.value || '').trim();
+  const status = Number(document.getElementById('simCardStatus')?.value || 1);
+
+  if (!requestId) {
+    showToast('Vui lòng nhập mã đơn thẻ cần test (VD: CARD_...)!', 'warning');
+    return;
+  }
+
+  showToast('Đang gửi dữ liệu giả lập callback gạch thẻ...', 'info');
+  try {
+    const res = await fetch('/api/admin/simulate-card-callback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        adminUsername: currentUser.username,
+        requestId: requestId,
+        status: status
+      })
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast(data.message, 'success');
+      loadAdminCards();
+    } else {
+      showToast(data.message, 'error');
+    }
+  } catch (err) {
+    showToast('Lỗi test giả lập: ' + err.message, 'error');
+  }
 }
 
 // ---------------- LỊCH SỬ GIAO DỊCH ----------------

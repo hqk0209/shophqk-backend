@@ -2,7 +2,7 @@
   "shopName": "Shophqk",
   "shopTitle": "Shophqk - Shop định vị số 1 Việt Nam",
   "shopDesc": "Định vị Android Antiban all thiết bị",
-  "shopNotice": "⚡ Ưu đãi nạp tiền: Khuyến mãi nạp tự động qua VietQR duyệt siêu tốc! Hỗ trợ 24/7.",
+  "shopNotice": "⚡ Ưu đãi nạp tiền: Nạp tự động VietQR & Thẻ cào siêu tốc 24/7! Hỗ trợ nhiệt tình.",
   "shopNoticeActive": true,
   "contactZalo": "0349340730",
   "contactPhone": "0349340730",
@@ -19,5 +19,9 @@
   ],
   "adminUsername": "hqk",
   "autoApproveEnabled": true,
-  "webhookSecretKey": "shophqk_secret_key_2026"
+  "webhookSecretKey": "shophqk_secret_key_2026",
+  "cardAutoEnabled": true,
+  "gachthefastPartnerId": "",
+  "gachthefastPartnerKey": "",
+  "cardDiscountRate": 85
 }

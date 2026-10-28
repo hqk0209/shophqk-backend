@@ -3,6 +3,7 @@ const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -836,6 +837,412 @@ app.post('/api/wallet/confirm-deposit', (req, res) => {
     status: tx.status,
     message: 'Hệ thống đang chờ nhận tiền từ ngân hàng. Sau khi bạn chuyển khoản, tiền sẽ tự động vào ví!'
   });
+});
+
+// ========================================================
+// HỆ THỐNG GẠCH THẺ CÀO TỰ ĐỘNG QUA GACHTHEFAST.COM
+// ========================================================
+
+// Hàm gửi thẻ lên gachthefast.com
+async function sendCardToGachTheFast({ telco, code, serial, amount, requestId, partnerId, partnerKey }) {
+  const command = 'charging';
+  // Chuỗi MD5 chuẩn theo tài liệu GachTheFast.Com:
+  // md5(partner_key + code + command + partner_id + request_id + serial + telco)
+  const rawSign = `${partnerKey}${code}${command}${partnerId}${requestId}${serial}${telco}`;
+  const sign = crypto.createHash('md5').update(rawSign).digest('hex');
+
+  const formData = new URLSearchParams();
+  formData.append('telco', telco.toUpperCase());
+  formData.append('code', String(code).trim());
+  formData.append('serial', String(serial).trim());
+  formData.append('amount', Number(amount));
+  formData.append('request_id', requestId);
+  formData.append('partner_id', String(partnerId).trim());
+  formData.append('sign', sign);
+  formData.append('command', command);
+
+  console.log(`[GACHTHEFAST GỬI THẺ] Nhà mạng: ${telco} | Mệnh giá: ${amount} | Mã đơn: ${requestId}`);
+
+  try {
+    const response = await fetch('https://gachthefast.com/chargingws/v2', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: formData.toString()
+    });
+
+    const text = await response.text();
+    let result;
+    try {
+      result = JSON.parse(text);
+    } catch (e) {
+      result = { status: 99, message: text };
+    }
+    console.log(`[GACHTHEFAST PHẢN HỒI]`, result);
+    return { success: true, data: result };
+  } catch (err) {
+    console.error(`[GACHTHEFAST LỖI KẾT NỐI]`, err.message);
+    return { success: false, message: 'Lỗi kết nối cổng GachTheFast.Com: ' + err.message };
+  }
+}
+
+// Hàm xử lý kết quả Callback / trạng thái thẻ cào
+function processCardCallback(data) {
+  if (!data) return { success: false, message: 'Dữ liệu callback rỗng!' };
+
+  const requestId = String(data.request_id || data.requestId || '').trim();
+  const serial = String(data.serial || '').trim();
+  const statusNum = Number(data.status);
+  const message = String(data.message || '');
+
+  console.log(`[XỬ LÝ THẺ CÀO CALLBACK] RequestID: "${requestId}" | Serial: "${serial}" | Status: ${statusNum} | Msg: "${message}"`);
+
+  const transactions = readJSON(TRANSACTIONS_FILE, []);
+  const txIndex = transactions.findIndex(t => 
+    (requestId && (t.code === requestId || t.id === requestId)) ||
+    (serial && t.serial === serial && t.status === 'PENDING')
+  );
+
+  if (txIndex === -1) {
+    return { success: false, message: `Không tìm thấy đơn nạp thẻ cào: ${requestId || serial}` };
+  }
+
+  const tx = transactions[txIndex];
+  if (tx.status === 'COMPLETED') {
+    return { success: true, message: `Đơn thẻ ${tx.code} đã được duyệt hoàn tất trước đó rồi.` };
+  }
+
+  const users = readJSON(USERS_FILE, []);
+  const userIndex = users.findIndex(u => u.username.toLowerCase() === tx.username.toLowerCase());
+  const settings = readJSON(SETTINGS_FILE, {});
+  const discountRate = Number(settings.cardDiscountRate !== undefined ? settings.cardDiscountRate : 85);
+
+  // Status 1: Thẻ đúng mệnh giá và nạp thành công
+  if (statusNum === 1) {
+    let creditAmount = 0;
+    if (data.amount && Number(data.amount) > 0) {
+      creditAmount = Number(data.amount);
+    } else {
+      creditAmount = Math.round(Number(tx.amount || tx.declaredAmount) * (discountRate / 100));
+    }
+
+    if (userIndex !== -1) {
+      users[userIndex].balance = (Number(users[userIndex].balance) || 0) + creditAmount;
+      writeJSON(USERS_FILE, users);
+    }
+
+    transactions[txIndex].status = 'COMPLETED';
+    transactions[txIndex].receiveAmount = creditAmount;
+    transactions[txIndex].realAmountReceived = creditAmount;
+    transactions[txIndex].approvedAt = new Date().toISOString();
+    transactions[txIndex].approvedBy = 'GACHTHEFAST_AUTO';
+    transactions[txIndex].gatewayTransId = data.trans_id || tx.gatewayTransId || '';
+    transactions[txIndex].note = message || 'Nạp thẻ thành công';
+    writeJSON(TRANSACTIONS_FILE, transactions);
+
+    console.log(`[GACHTHEFAST THÀNH CÔNG] +${creditAmount.toLocaleString('vi-VN')} đ cho ${tx.username} (Mã: ${tx.code})`);
+    return {
+      success: true,
+      message: `Đã nạp thẻ thành công +${creditAmount.toLocaleString('vi-VN')} đ cho tài khoản ${tx.username}!`,
+      creditAmount,
+      newBalance: userIndex !== -1 ? users[userIndex].balance : 0
+    };
+  }
+
+  // Status 2: Sai mệnh giá
+  if (statusNum === 2) {
+    const realValue = Number(data.value || data.real_amount || 0);
+    let creditAmount = Number(data.amount || data.receive_amount || 0);
+    if (creditAmount <= 0 && realValue > 0) {
+      // Phạt trừ 50% nếu khai sai mệnh giá
+      creditAmount = Math.round(realValue * (discountRate / 100) * 0.5);
+    }
+
+    if (creditAmount > 0 && userIndex !== -1) {
+      users[userIndex].balance = (Number(users[userIndex].balance) || 0) + creditAmount;
+      writeJSON(USERS_FILE, users);
+    }
+
+    transactions[txIndex].status = 'WRONG_AMOUNT';
+    transactions[txIndex].realValue = realValue;
+    transactions[txIndex].receiveAmount = creditAmount;
+    transactions[txIndex].realAmountReceived = creditAmount;
+    transactions[txIndex].approvedAt = new Date().toISOString();
+    transactions[txIndex].approvedBy = 'GACHTHEFAST_AUTO';
+    transactions[txIndex].gatewayTransId = data.trans_id || tx.gatewayTransId || '';
+    transactions[txIndex].note = `Sai mệnh giá: Khai ${tx.amount}đ nhưng thực tế ${realValue}đ. ${message}`;
+    writeJSON(TRANSACTIONS_FILE, transactions);
+
+    return {
+      success: true,
+      message: `Thẻ sai mệnh giá (Thực tế: ${realValue.toLocaleString('vi-VN')} đ). Đã cộng +${creditAmount.toLocaleString('vi-VN')} đ cho ${tx.username}.`,
+      creditAmount
+    };
+  }
+
+  // Status 3 hoặc lỗi khác: Thẻ lỗi, sai số, đã qua sử dụng
+  transactions[txIndex].status = 'FAILED';
+  transactions[txIndex].approvedAt = new Date().toISOString();
+  transactions[txIndex].approvedBy = 'GACHTHEFAST_AUTO';
+  transactions[txIndex].gatewayTransId = data.trans_id || tx.gatewayTransId || '';
+  transactions[txIndex].note = message || 'Thẻ không hợp lệ, sai mã thẻ/seri hoặc đã qua sử dụng';
+  writeJSON(TRANSACTIONS_FILE, transactions);
+
+  return { success: false, message: transactions[txIndex].note };
+}
+
+// 1. API Gửi thẻ cào nạp tiền (User)
+app.post('/api/card/deposit', (req, res) => {
+  const { username, telco, code, serial, amount } = req.body;
+
+  if (!username) {
+    return res.status(401).json({ success: false, message: 'Vui lòng đăng nhập để nạp thẻ!' });
+  }
+
+  if (!telco || !code || !serial || !amount || Number(amount) < 10000) {
+    return res.status(400).json({ success: false, message: 'Vui lòng điền đầy đủ loại thẻ, mệnh giá (tối thiểu 10.000đ), số serial và mã nạp (pin)!' });
+  }
+
+  const cleanTelco = String(telco).trim().toUpperCase();
+  const cleanCode = String(code).trim();
+  const cleanSerial = String(serial).trim();
+  const numAmount = Number(amount);
+
+  const users = readJSON(USERS_FILE, []);
+  const user = users.find(u => u.username.toLowerCase() === username.trim().toLowerCase());
+  if (!user) {
+    return res.status(404).json({ success: false, message: 'Người dùng không tồn tại!' });
+  }
+
+  const settings = readJSON(SETTINGS_FILE, {});
+  if (settings.cardAutoEnabled === false) {
+    return res.status(400).json({ success: false, message: 'Cổng nạp thẻ cào hiện đang tạm bảo trì. Vui lòng quay lại sau!' });
+  }
+
+  const transactions = readJSON(TRANSACTIONS_FILE, []);
+
+  // Kiểm tra tránh gửi lặp thẻ đang PENDING hoặc đã nạp
+  const isDuplicate = transactions.some(t => 
+    t.type === 'CARD_DEPOSIT' && 
+    t.serial === cleanSerial && 
+    (t.status === 'PENDING' || t.status === 'COMPLETED')
+  );
+  if (isDuplicate) {
+    return res.status(400).json({ success: false, message: `Thẻ cào (Serial: ${cleanSerial}) đã được gửi hoặc đã nạp trước đó rồi!` });
+  }
+
+  const requestId = 'CARD_' + Date.now() + '_' + Math.floor(1000 + Math.random() * 9000);
+  const discountRate = Number(settings.cardDiscountRate !== undefined ? settings.cardDiscountRate : 85);
+  const estimatedReceive = Math.round(numAmount * (discountRate / 100));
+
+  const newTx = {
+    id: 'tx_card_' + Date.now(),
+    type: 'CARD_DEPOSIT',
+    username: user.username,
+    telco: cleanTelco,
+    code: requestId,
+    serial: cleanSerial,
+    cardPinMasked: cleanCode.length > 6 ? cleanCode.slice(0, 3) + '****' + cleanCode.slice(-3) : '******',
+    rawCode: cleanCode,
+    amount: numAmount,
+    declaredAmount: numAmount,
+    receiveAmount: estimatedReceive,
+    discountRate: discountRate,
+    status: 'PENDING',
+    createdAt: new Date().toISOString(),
+    gateway: 'GACHTHEFAST'
+  };
+
+  transactions.unshift(newTx);
+  writeJSON(TRANSACTIONS_FILE, transactions);
+
+  // Nếu đã thiết lập Partner ID & Key trên GachTheFast -> Gửi tự động ngay
+  if (settings.gachthefastPartnerId && settings.gachthefastPartnerKey) {
+    sendCardToGachTheFast({
+      telco: cleanTelco,
+      code: cleanCode,
+      serial: cleanSerial,
+      amount: numAmount,
+      requestId: requestId,
+      partnerId: settings.gachthefastPartnerId,
+      partnerKey: settings.gachthefastPartnerKey
+    }).then(result => {
+      if (result.success && result.data) {
+        const d = result.data;
+        const currentTxList = readJSON(TRANSACTIONS_FILE, []);
+        const idx = currentTxList.findIndex(t => t.id === newTx.id);
+        if (idx !== -1) {
+          currentTxList[idx].gatewayTransId = d.trans_id || '';
+          writeJSON(TRANSACTIONS_FILE, currentTxList);
+
+          if (Number(d.status) === 1) {
+            processCardCallback({
+              status: 1,
+              request_id: requestId,
+              amount: d.amount || estimatedReceive,
+              message: d.message || 'Thành công'
+            });
+          } else if (Number(d.status) === 2) {
+            processCardCallback({
+              status: 2,
+              request_id: requestId,
+              value: d.value,
+              amount: d.amount,
+              message: d.message || 'Sai mệnh giá'
+            });
+          } else if (Number(d.status) === 3 || (Number(d.status) >= 100 && Number(d.status) !== 99)) {
+            processCardCallback({
+              status: 3,
+              request_id: requestId,
+              message: d.message || 'Thẻ lỗi hoặc sai thông tin'
+            });
+          }
+        }
+      }
+    }).catch(err => console.error('[GACHTHEFAST ERROR TRONG SEND]', err));
+  }
+
+  res.json({
+    success: true,
+    message: 'Thẻ đã được tiếp nhận và gửi lên hệ thống GachTheFast.Com! Đang tự động kiểm tra và duyệt tiền 24/7.',
+    data: {
+      txId: newTx.id,
+      requestId: requestId,
+      telco: cleanTelco,
+      amount: numAmount,
+      estimatedReceive: estimatedReceive,
+      status: 'PENDING'
+    }
+  });
+});
+
+// 2. Webhook nhận Callback tự động từ GachTheFast.Com
+app.all(['/api/webhook/card', '/api/webhook/gachthefast'], (req, res) => {
+  const data = Object.assign({}, req.query, req.body);
+  console.log(`[GACHTHEFAST CALLBACK ĐẾN]`, data);
+
+  const result = processCardCallback(data);
+  return res.json({ status: true, message: result.message });
+});
+
+// 3. API Kiểm tra trạng thái thẻ cào Realtime (Polling cho người dùng)
+app.get('/api/card/deposit-status/:txId', (req, res) => {
+  const { txId } = req.params;
+  const transactions = readJSON(TRANSACTIONS_FILE, []);
+  const tx = transactions.find(t => t.id === txId || t.code === txId);
+  if (!tx) {
+    return res.status(404).json({ success: false, message: 'Không tìm thấy đơn thẻ cào!' });
+  }
+
+  res.json({
+    success: true,
+    status: tx.status,
+    telco: tx.telco,
+    amount: tx.amount,
+    receiveAmount: tx.receiveAmount,
+    note: tx.note || '',
+    username: tx.username,
+    code: tx.code,
+    approvedAt: tx.approvedAt
+  });
+});
+
+// 4. Lấy lịch sử nạp thẻ cào của tài khoản
+app.get('/api/card/history/:username', (req, res) => {
+  const { username } = req.params;
+  const transactions = readJSON(TRANSACTIONS_FILE, []);
+  const cardTx = transactions.filter(t => t.type === 'CARD_DEPOSIT' && t.username.toLowerCase() === username.trim().toLowerCase());
+  res.json({ success: true, data: cardTx });
+});
+
+// 5. Lấy danh sách thẻ cào nạp cho Admin
+app.get('/api/admin/cards', requireAdmin, (req, res) => {
+  const transactions = readJSON(TRANSACTIONS_FILE, []);
+  const cards = transactions.filter(t => t.type === 'CARD_DEPOSIT');
+  res.json({ success: true, data: cards });
+});
+
+// 6. Admin duyệt thẻ cào thủ công (Dự phòng khi nhà mạng trễ)
+app.post('/api/admin/approve-card', requireAdmin, (req, res) => {
+  const { txId, amount } = req.body;
+  if (!txId) {
+    return res.status(400).json({ success: false, message: 'Thiếu mã đơn thẻ!' });
+  }
+
+  const transactions = readJSON(TRANSACTIONS_FILE, []);
+  const idx = transactions.findIndex(t => t.id === txId || t.code === txId);
+  if (idx === -1) {
+    return res.status(404).json({ success: false, message: 'Không tìm thấy đơn thẻ!' });
+  }
+
+  const tx = transactions[idx];
+  if (tx.status === 'COMPLETED') {
+    return res.status(400).json({ success: false, message: 'Đơn thẻ này đã được duyệt trước đó!' });
+  }
+
+  const users = readJSON(USERS_FILE, []);
+  const userIdx = users.findIndex(u => u.username.toLowerCase() === tx.username.toLowerCase());
+  if (userIdx === -1) {
+    return res.status(404).json({ success: false, message: 'Người dùng không tồn tại!' });
+  }
+
+  const creditAmount = Number(amount) || Number(tx.receiveAmount) || Math.round(Number(tx.amount) * 0.85);
+  users[userIdx].balance = (Number(users[userIdx].balance) || 0) + creditAmount;
+  writeJSON(USERS_FILE, users);
+
+  transactions[idx].status = 'COMPLETED';
+  transactions[idx].receiveAmount = creditAmount;
+  transactions[idx].realAmountReceived = creditAmount;
+  transactions[idx].approvedBy = req.adminUser.username;
+  transactions[idx].approvedAt = new Date().toISOString();
+  transactions[idx].note = 'Admin duyệt thủ công';
+  writeJSON(TRANSACTIONS_FILE, transactions);
+
+  res.json({
+    success: true,
+    message: `Đã duyệt thẻ thành công! Đã cộng +${creditAmount.toLocaleString('vi-VN')} đ cho ${tx.username}.`,
+    newBalance: users[userIdx].balance
+  });
+});
+
+// 7. Admin từ chối thẻ cào lỗi
+app.post('/api/admin/reject-card', requireAdmin, (req, res) => {
+  const { txId, reason } = req.body;
+  if (!txId) {
+    return res.status(400).json({ success: false, message: 'Thiếu mã đơn thẻ!' });
+  }
+
+  const transactions = readJSON(TRANSACTIONS_FILE, []);
+  const idx = transactions.findIndex(t => t.id === txId || t.code === txId);
+  if (idx === -1) {
+    return res.status(404).json({ success: false, message: 'Không tìm thấy đơn thẻ!' });
+  }
+
+  transactions[idx].status = 'FAILED';
+  transactions[idx].approvedBy = req.adminUser.username;
+  transactions[idx].approvedAt = new Date().toISOString();
+  transactions[idx].note = reason || 'Admin từ chối / Thẻ sai hoặc đã nạp';
+  writeJSON(TRANSACTIONS_FILE, transactions);
+
+  res.json({ success: true, message: 'Đã từ chối đơn thẻ thành công!' });
+});
+
+// 8. Admin Giả lập Callback Gạch Thẻ để Test tính năng không tốn tiền
+app.post('/api/admin/simulate-card-callback', requireAdmin, (req, res) => {
+  const { requestId, status, amount, message } = req.body;
+  if (!requestId) {
+    return res.status(400).json({ success: false, message: 'Vui lòng cung cấp mã đơn thẻ (Request ID) cần test!' });
+  }
+
+  const result = processCardCallback({
+    request_id: requestId,
+    status: Number(status !== undefined ? status : 1),
+    amount: amount ? Number(amount) : undefined,
+    message: message || 'Mô phỏng gạch thẻ tự động thành công (Admin Test)'
+  });
+
+  res.json(result);
 });
 
 // ---------------- API MUA HÀNG (CHECKOUT) ----------------
