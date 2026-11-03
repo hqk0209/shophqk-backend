@@ -5,6 +5,30 @@ const path = require('path');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 
+// ---------------- NẠP FILE .ENV TỰ ĐỘNG (KHÔNG CẦN THƯ VIỆN BÊN NGOÀI) ----------------
+const envPath = path.join(__dirname, '.env');
+if (fs.existsSync(envPath)) {
+  try {
+    const envContent = fs.readFileSync(envPath, 'utf8');
+    envContent.split(/\r?\n/).forEach(line => {
+      line = line.trim();
+      if (line && !line.startsWith('#') && line.includes('=')) {
+        const idx = line.indexOf('=');
+        const key = line.slice(0, idx).trim();
+        let val = line.slice(idx + 1).trim();
+        if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+          val = val.slice(1, -1);
+        }
+        if (!process.env[key]) {
+          process.env[key] = val;
+        }
+      }
+    });
+  } catch (err) {
+    console.error('[ENV] Lỗi khi nạp file .env:', err.message);
+  }
+}
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -22,49 +46,205 @@ app.use('/uploads', express.static(UPLOADS_DIR));
 
 // Health check endpoint cho Cron-job / UptimeRobot giữ web luôn thức 24/7
 app.get(['/api/health', '/ping'], (req, res) => {
-  res.json({ status: 'ok', service: 'Shophqk', uptime: Math.floor(process.uptime()), timestamp: new Date().toISOString() });
+  res.json({
+    status: 'ok',
+    service: 'Shophqk',
+    uptime: Math.floor(process.uptime()),
+    timestamp: new Date().toISOString()
+  });
 });
 
 // Paths to database files
 const DATA_DIR = path.join(__dirname, 'data');
+if (!fs.existsSync(DATA_DIR)) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+}
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
 const PRODUCTS_FILE = path.join(DATA_DIR, 'products.json');
 const TRANSACTIONS_FILE = path.join(DATA_DIR, 'transactions.json');
 const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
 
-// Helper functions for reading/writing JSON files
-function readJSON(filePath, defaultValue = []) {
+// ---------------- ATOMIC FILE I/O (CHỐNG XUNG ĐỘT GHI ĐÈ & HỎNG FILE) ----------------
+function safeWriteJSON(filePath, data) {
   try {
-    if (!fs.existsSync(filePath)) {
-      fs.writeFileSync(filePath, JSON.stringify(defaultValue, null, 2), 'utf8');
-      return defaultValue;
+    const dir = path.dirname(filePath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
     }
-    const data = fs.readFileSync(filePath, 'utf8');
-    return JSON.parse(data || '[]');
+    const tempFile = `${filePath}.tmp.${Date.now()}.${Math.random().toString(36).substring(2, 8)}`;
+    const content = JSON.stringify(data, null, 2);
+    fs.writeFileSync(tempFile, content, 'utf8');
+    fs.renameSync(tempFile, filePath);
+    return true;
   } catch (err) {
-    console.error(`Error reading ${filePath}:`, err);
-    return defaultValue;
+    console.error(`[FS ERROR] Không thể ghi an toàn vào ${filePath}:`, err.message);
+    try {
+      fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
+      return true;
+    } catch (e2) {
+      console.error(`[FS ERROR] Ghi dự phòng thất bại cho ${filePath}:`, e2.message);
+      return false;
+    }
   }
 }
 
 function writeJSON(filePath, data) {
+  return safeWriteJSON(filePath, data);
+}
+
+function readJSON(filePath, defaultValue = []) {
   try {
-    fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
-    return true;
+    if (!fs.existsSync(filePath)) {
+      safeWriteJSON(filePath, defaultValue);
+      return defaultValue;
+    }
+    const data = fs.readFileSync(filePath, 'utf8');
+    if (!data || data.trim() === '') {
+      safeWriteJSON(filePath, defaultValue);
+      return defaultValue;
+    }
+    return JSON.parse(data);
   } catch (err) {
-    console.error(`Error writing ${filePath}:`, err);
-    return false;
+    console.error(`[FS ERROR] Lỗi khi đọc file ${filePath}:`, err.message);
+    return defaultValue;
   }
+}
+
+// ---------------- CƠ CHẾ TOKEN XÁC THỰC BẢO MẬT (CHUẨN JWT HS256) ----------------
+const JWT_SECRET = process.env.JWT_SECRET || (function() {
+  const settings = readJSON(SETTINGS_FILE, {});
+  if (!settings.jwtSecret) {
+    settings.jwtSecret = crypto.randomBytes(32).toString('hex');
+    writeJSON(SETTINGS_FILE, settings);
+  }
+  return settings.jwtSecret;
+})();
+
+function base64UrlEncode(str) {
+  return Buffer.from(str)
+    .toString('base64')
+    .replace(/=/g, '')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_');
+}
+
+function base64UrlDecode(str) {
+  str = str.replace(/-/g, '+').replace(/_/g, '/');
+  while (str.length % 4) str += '=';
+  return Buffer.from(str, 'base64').toString('utf8');
+}
+
+function signJWT(payload, expiresInSeconds = 7 * 24 * 3600) {
+  const header = { alg: 'HS256', typ: 'JWT' };
+  const exp = Math.floor(Date.now() / 1000) + expiresInSeconds;
+  const fullPayload = { ...payload, exp };
+
+  const encodedHeader = base64UrlEncode(JSON.stringify(header));
+  const encodedPayload = base64UrlEncode(JSON.stringify(fullPayload));
+  const dataToSign = `${encodedHeader}.${encodedPayload}`;
+
+  const signature = crypto
+    .createHmac('sha256', JWT_SECRET)
+    .update(dataToSign)
+    .digest('base64')
+    .replace(/=/g, '')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_');
+
+  return `${dataToSign}.${signature}`;
+}
+
+function verifyJWT(token) {
+  if (!token || typeof token !== 'string') return null;
+  const parts = token.split('.');
+  if (parts.length !== 3) return null;
+
+  const [encodedHeader, encodedPayload, signature] = parts;
+  const dataToSign = `${encodedHeader}.${encodedPayload}`;
+
+  const expectedSignature = crypto
+    .createHmac('sha256', JWT_SECRET)
+    .update(dataToSign)
+    .digest('base64')
+    .replace(/=/g, '')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_');
+
+  if (
+    signature.length !== expectedSignature.length ||
+    !crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSignature))
+  ) {
+    return null;
+  }
+
+  try {
+    const payload = JSON.parse(base64UrlDecode(encodedPayload));
+    if (payload.exp && Math.floor(Date.now() / 1000) > payload.exp) {
+      return null;
+    }
+    return payload;
+  } catch (e) {
+    return null;
+  }
+}
+
+// Middleware xác thực người dùng đăng nhập
+function authenticateToken(req, res, next) {
+  const authHeader = req.headers['authorization'];
+  let token = null;
+
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.substring(7).trim();
+  } else if (req.headers['x-auth-token']) {
+    token = req.headers['x-auth-token'];
+  } else if (req.query && req.query.token) {
+    token = req.query.token;
+  }
+
+  if (!token) {
+    return res.status(401).json({ success: false, message: 'Yêu cầu đăng nhập để thực hiện thao tác này!' });
+  }
+
+  const decoded = verifyJWT(token);
+  if (!decoded) {
+    return res.status(401).json({ success: false, message: 'Phiên đăng nhập đã hết hạn hoặc không hợp lệ. Vui lòng đăng nhập lại!' });
+  }
+
+  const users = readJSON(USERS_FILE, []);
+  const user = users.find(u => u.username.toLowerCase() === decoded.username.toLowerCase());
+  if (!user) {
+    return res.status(401).json({ success: false, message: 'Tài khoản người dùng không tồn tại!' });
+  }
+
+  req.user = {
+    id: user.id,
+    username: user.username,
+    role: user.role,
+    fullname: user.fullname
+  };
+  next();
+}
+
+// Middleware kiểm tra quyền Quản trị viên (Admin)
+function requireAdmin(req, res, next) {
+  authenticateToken(req, res, () => {
+    if (!req.user || req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, message: 'Bạn không có quyền quản trị viên!' });
+    }
+    req.adminUser = req.user;
+    next();
+  });
 }
 
 // ---------------- SEED TÀI KHOẢN ADMIN HQK ----------------
 function seedAdminUser() {
   const users = readJSON(USERS_FILE, []);
   let admin = users.find(u => u.username.toLowerCase() === 'hqk');
-  const salt = bcrypt.genSaltSync(10);
-  const hashedPassword = bcrypt.hashSync('khanh2k9', salt);
+  const defaultAdminPassword = process.env.ADMIN_PASSWORD || 'khanh2k9';
 
   if (!admin) {
+    const salt = bcrypt.genSaltSync(10);
+    const hashedPassword = bcrypt.hashSync(defaultAdminPassword, salt);
     admin = {
       id: 'admin_hqk',
       username: 'hqk',
@@ -76,13 +256,22 @@ function seedAdminUser() {
     };
     users.unshift(admin);
     writeJSON(USERS_FILE, users);
-    console.log('[OK] Da khoi tao tai khoan Admin hqk mac dinh (pass: khanh2k9).');
+    console.log('[OK] Da khoi tao tai khoan Admin hqk mac dinh (pass: ' + defaultAdminPassword + ').');
   } else {
-    admin.role = 'admin';
-    admin.password = hashedPassword;
-    if (admin.balance === undefined) admin.balance = 10000000;
-    writeJSON(USERS_FILE, users);
-    console.log('[OK] Da dong bo quyen Admin va mat khau cho tai khoan hqk.');
+    // Chỉ bảo đảm quyền admin và balance tối thiểu, KHÔNG ghi đè mật khẩu khi admin đã đổi mật khẩu!
+    let updated = false;
+    if (admin.role !== 'admin') {
+      admin.role = 'admin';
+      updated = true;
+    }
+    if (admin.balance === undefined) {
+      admin.balance = 10000000;
+      updated = true;
+    }
+    if (updated) {
+      writeJSON(USERS_FILE, users);
+    }
+    console.log('[OK] Da xac minh quyen Admin cho tai khoan hqk.');
   }
 }
 seedAdminUser();
@@ -120,55 +309,27 @@ function seedDefaultProducts() {
 }
 seedDefaultProducts();
 
-// Middleware kiểm tra quyền Admin
-function requireAdmin(req, res, next) {
-  const adminUsername = req.headers['x-admin-username'] || 
-    (req.body && req.body.adminUsername) || 
-    (req.query && req.query.adminUsername);
-  if (!adminUsername) {
-    return res.status(403).json({ success: false, message: 'Yêu cầu quyền Quản trị viên!' });
-  }
-
-  const users = readJSON(USERS_FILE, []);
-  const admin = users.find(u => u.username.toLowerCase() === adminUsername.trim().toLowerCase());
-  if (!admin || admin.role !== 'admin') {
-    return res.status(403).json({ success: false, message: 'Bạn không có quyền quản trị viên!' });
-  }
-
-  req.adminUser = admin;
-  next();
-}
-
 // ---------------- API SẢN PHẨM (PRODUCTS) ----------------
-// Lấy danh sách sản phẩm
+// Lấy danh sách sản phẩm (Công khai)
 app.get('/api/products', (req, res) => {
   const products = readJSON(PRODUCTS_FILE, []);
   res.json({ success: true, data: products });
 });
 
-// Thêm sản phẩm mới (Yêu cầu quyền Admin)
-app.post('/api/products', (req, res) => {
-  const { name, price, stock, category, description, image, downloadUrl, adminUsername } = req.body;
-  
+// Thêm sản phẩm mới (Bảo vệ bằng requireAdmin)
+app.post('/api/products', requireAdmin, (req, res) => {
+  const { name, price, stock, category, description, image, downloadUrl } = req.body;
+
   if (!name || price === undefined || stock === undefined) {
     return res.status(400).json({ success: false, message: 'Vui lòng nhập tên, giá tiền và số lượng sản phẩm!' });
-  }
-
-  // Kiểm tra quyền Admin khi thêm sản phẩm
-  if (adminUsername) {
-    const users = readJSON(USERS_FILE, []);
-    const admin = users.find(u => u.username.toLowerCase() === adminUsername.trim().toLowerCase());
-    if (!admin || admin.role !== 'admin') {
-      return res.status(403).json({ success: false, message: 'Chỉ Admin mới có quyền thêm sản phẩm!' });
-    }
   }
 
   const products = readJSON(PRODUCTS_FILE, []);
   const newProduct = {
     id: 'prod_' + Date.now(),
     name: name.trim(),
-    price: Number(price) || 0,
-    stock: Number(stock) || 0,
+    price: Math.max(0, Number(price) || 0),
+    stock: Math.max(0, Number(stock) || 0),
     category: category ? category.trim() : 'Sản phẩm số',
     description: description ? description.trim() : '',
     image: image && image.trim() !== '' ? image.trim() : 'https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?w=500&auto=format&fit=crop&q=60',
@@ -182,18 +343,9 @@ app.post('/api/products', (req, res) => {
   res.status(201).json({ success: true, message: 'Thêm sản phẩm thành công!', data: newProduct });
 });
 
-// Xóa sản phẩm (Chỉ Admin)
-app.delete('/api/products/:id', (req, res) => {
+// Xóa sản phẩm (Bảo vệ bằng requireAdmin)
+app.delete('/api/products/:id', requireAdmin, (req, res) => {
   const { id } = req.params;
-  const adminUsername = req.query.adminUsername || req.headers['x-admin-username'];
-  if (adminUsername) {
-    const users = readJSON(USERS_FILE, []);
-    const admin = users.find(u => u.username.toLowerCase() === adminUsername.trim().toLowerCase());
-    if (!admin || admin.role !== 'admin') {
-      return res.status(403).json({ success: false, message: 'Chỉ Admin mới có quyền xóa sản phẩm!' });
-    }
-  }
-
   let products = readJSON(PRODUCTS_FILE, []);
   const initialLength = products.length;
   products = products.filter(p => p.id !== id);
@@ -206,18 +358,10 @@ app.delete('/api/products/:id', (req, res) => {
   res.json({ success: true, message: 'Đã xóa sản phẩm thành công!' });
 });
 
-// Sửa / cập nhật thông tin sản phẩm (Chỉ Admin)
-app.put('/api/products/:id', (req, res) => {
+// Sửa / cập nhật thông tin sản phẩm (Bảo vệ bằng requireAdmin)
+app.put('/api/products/:id', requireAdmin, (req, res) => {
   const { id } = req.params;
-  const { name, price, stock, category, description, image, downloadUrl, adminUsername } = req.body;
-
-  if (adminUsername) {
-    const users = readJSON(USERS_FILE, []);
-    const admin = users.find(u => u.username.toLowerCase() === adminUsername.trim().toLowerCase());
-    if (!admin || admin.role !== 'admin') {
-      return res.status(403).json({ success: false, message: 'Chỉ Admin mới có quyền sửa sản phẩm!' });
-    }
-  }
+  const { name, price, stock, category, description, image, downloadUrl } = req.body;
 
   let products = readJSON(PRODUCTS_FILE, []);
   const pIndex = products.findIndex(p => p.id === id);
@@ -226,8 +370,8 @@ app.put('/api/products/:id', (req, res) => {
   }
 
   if (name !== undefined) products[pIndex].name = name.trim();
-  if (price !== undefined) products[pIndex].price = Number(price);
-  if (stock !== undefined) products[pIndex].stock = Number(stock);
+  if (price !== undefined) products[pIndex].price = Math.max(0, Number(price));
+  if (stock !== undefined) products[pIndex].stock = Math.max(0, Number(stock));
   if (category !== undefined) products[pIndex].category = category.trim();
   if (description !== undefined) products[pIndex].description = description.trim();
   if (image !== undefined && image.trim() !== '') products[pIndex].image = image.trim();
@@ -238,40 +382,43 @@ app.put('/api/products/:id', (req, res) => {
   res.json({ success: true, message: 'Đã cập nhật sản phẩm thành công!', data: products[pIndex] });
 });
 
-// Upload ảnh sản phẩm (Kéo thả hoặc mở thư mục - Chỉ Admin)
-app.post('/api/admin/upload-image', (req, res) => {
-  const { imageBase64, filename, adminUsername } = req.body;
-  if (adminUsername) {
-    const users = readJSON(USERS_FILE, []);
-    const admin = users.find(u => u.username.toLowerCase() === adminUsername.trim().toLowerCase());
-    if (!admin || admin.role !== 'admin') {
-      return res.status(403).json({ success: false, message: 'Chỉ Admin mới có quyền tải ảnh!' });
-    }
-  }
+// Upload ảnh sản phẩm an toàn (Bảo vệ bằng requireAdmin)
+app.post('/api/admin/upload-image', requireAdmin, (req, res) => {
+  const { imageBase64, filename } = req.body;
 
   if (!imageBase64) {
     return res.status(400).json({ success: false, message: 'Vui lòng cung cấp dữ liệu hình ảnh!' });
   }
 
   try {
-    const matches = imageBase64.match(/^data:image\/([A-Za-z-+\/]+);base64,(.+)$/);
+    const matches = imageBase64.match(/^data:image\/([A-Za-z0-9-+.]+);base64,(.+)$/);
     let ext = 'png';
     let buffer;
+
     if (matches && matches.length === 3) {
-      ext = matches[1].replace('jpeg', 'jpg').replace('svg+xml', 'svg');
+      const mimeSub = matches[1].toLowerCase();
+      if (!['png', 'jpeg', 'jpg', 'webp', 'gif', 'svg+xml'].includes(mimeSub)) {
+        return res.status(400).json({ success: false, message: 'Định dạng hình ảnh không được hỗ trợ! Chỉ chấp nhận PNG, JPG, WEBP, GIF, SVG.' });
+      }
+      ext = mimeSub.replace('jpeg', 'jpg').replace('svg+xml', 'svg');
       buffer = Buffer.from(matches[2], 'base64');
     } else {
       buffer = Buffer.from(imageBase64, 'base64');
     }
 
-    const safeName = 'img_' + Date.now() + '_' + Math.floor(Math.random() * 10000) + '.' + ext;
+    // Giới hạn kích thước ảnh tối đa 10MB
+    if (buffer.length > 10 * 1024 * 1024) {
+      return res.status(400).json({ success: false, message: 'Kích thước ảnh tối đa cho phép là 10MB!' });
+    }
+
+    const safeName = 'img_' + Date.now() + '_' + crypto.randomBytes(4).toString('hex') + '.' + ext;
     const savePath = path.join(UPLOADS_DIR, safeName);
     fs.writeFileSync(savePath, buffer);
 
     const imageUrl = `/uploads/${safeName}`;
     res.json({ success: true, message: 'Tải ảnh thành công!', imageUrl: imageUrl });
   } catch (err) {
-    console.error('Lỗi lưu ảnh:', err);
+    console.error('[UPLOAD ERROR]', err);
     res.status(500).json({ success: false, message: 'Lỗi khi lưu ảnh lên máy chủ!' });
   }
 });
@@ -286,8 +433,12 @@ app.post('/api/auth/register', (req, res) => {
   }
 
   const cleanUser = username.trim().toLowerCase();
-  if (cleanUser.length < 3) {
-    return res.status(400).json({ success: false, message: 'Tên đăng nhập phải có ít nhất 3 ký tự!' });
+  if (cleanUser.length < 3 || cleanUser.length > 30 || !/^[a-zA-Z0-9_]+$/.test(cleanUser)) {
+    return res.status(400).json({ success: false, message: 'Tên đăng nhập từ 3-30 ký tự, chỉ gồm chữ cái, số và dấu gạch dưới!' });
+  }
+
+  if (password.length < 6) {
+    return res.status(400).json({ success: false, message: 'Mật khẩu phải có ít nhất 6 ký tự!' });
   }
 
   const users = readJSON(USERS_FILE, []);
@@ -312,8 +463,19 @@ app.post('/api/auth/register', (req, res) => {
   users.push(newUser);
   writeJSON(USERS_FILE, users);
 
+  const token = signJWT({
+    id: newUser.id,
+    username: newUser.username,
+    role: newUser.role
+  });
+
   const { password: _, ...userWithoutPass } = newUser;
-  res.status(201).json({ success: true, message: 'Tạo tài khoản thành công!', data: userWithoutPass });
+  res.status(201).json({
+    success: true,
+    message: 'Tạo tài khoản thành công!',
+    token: token,
+    data: userWithoutPass
+  });
 });
 
 // Đăng nhập
@@ -332,15 +494,43 @@ app.post('/api/auth/login', (req, res) => {
     return res.status(400).json({ success: false, message: 'Tài khoản hoặc mật khẩu không chính xác!' });
   }
 
+  const token = signJWT({
+    id: user.id,
+    username: user.username,
+    role: user.role
+  });
+
   const { password: _, ...userWithoutPass } = user;
-  res.json({ success: true, message: `Chào mừng ${user.role === 'admin' ? 'Quản trị viên ' : ''}${user.fullname || user.username}!`, data: userWithoutPass });
+  res.json({
+    success: true,
+    message: `Chào mừng ${user.role === 'admin' ? 'Quản trị viên ' : ''}${user.fullname || user.username}!`,
+    token: token,
+    data: userWithoutPass
+  });
 });
 
-// Lấy thông tin user hiện tại (cập nhật số dư)
-app.get('/api/auth/me/:username', (req, res) => {
-  const { username } = req.params;
+// Lấy thông tin user hiện tại
+app.get('/api/auth/me', authenticateToken, (req, res) => {
   const users = readJSON(USERS_FILE, []);
-  const user = users.find(u => u.username.toLowerCase() === username.trim().toLowerCase());
+  const user = users.find(u => u.username.toLowerCase() === req.user.username.toLowerCase());
+  if (!user) {
+    return res.status(404).json({ success: false, message: 'Không tìm thấy người dùng!' });
+  }
+  const { password: _, ...userWithoutPass } = user;
+  res.json({ success: true, data: userWithoutPass });
+});
+
+// Lấy thông tin user theo username (Chỉ chính user đó hoặc Admin)
+app.get('/api/auth/me/:username', authenticateToken, (req, res) => {
+  const { username } = req.params;
+  const targetUser = username.trim().toLowerCase();
+
+  if (req.user.role !== 'admin' && req.user.username.toLowerCase() !== targetUser) {
+    return res.status(403).json({ success: false, message: 'Bạn không có quyền xem thông tin tài khoản khác!' });
+  }
+
+  const users = readJSON(USERS_FILE, []);
+  const user = users.find(u => u.username.toLowerCase() === targetUser);
 
   if (!user) {
     return res.status(404).json({ success: false, message: 'Không tìm thấy người dùng!' });
@@ -348,6 +538,36 @@ app.get('/api/auth/me/:username', (req, res) => {
 
   const { password: _, ...userWithoutPass } = user;
   res.json({ success: true, data: userWithoutPass });
+});
+
+// Đổi mật khẩu tài khoản
+app.post('/api/auth/change-password', authenticateToken, (req, res) => {
+  const { oldPassword, newPassword } = req.body;
+
+  if (!oldPassword || !newPassword) {
+    return res.status(400).json({ success: false, message: 'Vui lòng nhập mật khẩu hiện tại và mật khẩu mới!' });
+  }
+
+  if (newPassword.length < 6) {
+    return res.status(400).json({ success: false, message: 'Mật khẩu mới phải có ít nhất 6 ký tự!' });
+  }
+
+  const users = readJSON(USERS_FILE, []);
+  const userIndex = users.findIndex(u => u.username.toLowerCase() === req.user.username.toLowerCase());
+  if (userIndex === -1) {
+    return res.status(404).json({ success: false, message: 'Người dùng không tồn tại!' });
+  }
+
+  if (!bcrypt.compareSync(oldPassword, users[userIndex].password)) {
+    return res.status(400).json({ success: false, message: 'Mật khẩu hiện tại không chính xác!' });
+  }
+
+  const salt = bcrypt.genSaltSync(10);
+  users[userIndex].password = bcrypt.hashSync(newPassword, salt);
+  users[userIndex].updatedAt = new Date().toISOString();
+  writeJSON(USERS_FILE, users);
+
+  res.json({ success: true, message: 'Đổi mật khẩu thành công!' });
 });
 
 // ---------------- API QUẢN TRỊ ADMIN (ADMIN PANEL) ----------------
@@ -380,14 +600,12 @@ app.post('/api/admin/add-balance', requireAdmin, (req, res) => {
   let successMsg = '';
 
   if (action === 'reset') {
-    // Xóa sạch tiền về 0 VNĐ
     txType = 'ADMIN_RESET';
     txAmount = currentBal;
     newBal = 0;
     users[userIndex].balance = 0;
     successMsg = `Đã xóa sạch số dư của user [${users[userIndex].username}] về 0 đ! (Đã trừ hết ${currentBal.toLocaleString('vi-VN')} đ)`;
   } else if (action === 'deduct') {
-    // Giảm / Trừ tiền
     const deductAmt = Math.abs(Number(amount) || 0);
     if (deductAmt <= 0) {
       return res.status(400).json({ success: false, message: 'Vui lòng nhập số tiền cần giảm hợp lệ!' });
@@ -398,13 +616,11 @@ app.post('/api/admin/add-balance', requireAdmin, (req, res) => {
     users[userIndex].balance = newBal;
     successMsg = `Đã giảm trừ -${deductAmt.toLocaleString('vi-VN')} đ của user [${users[userIndex].username}]. Số dư mới: ${newBal.toLocaleString('vi-VN')} đ`;
   } else {
-    // Cộng tiền (Mặc định)
     const addAmt = Number(amount) || 0;
     if (addAmt === 0) {
       return res.status(400).json({ success: false, message: 'Vui lòng nhập số tiền cần cộng hợp lệ!' });
     }
     if (addAmt < 0) {
-      // Nếu nhập số âm thì tự động chuyển thành giảm tiền
       txType = 'ADMIN_DEDUCT';
       txAmount = Math.abs(addAmt);
       newBal = Math.max(0, currentBal + addAmt);
@@ -421,7 +637,6 @@ app.post('/api/admin/add-balance', requireAdmin, (req, res) => {
 
   writeJSON(USERS_FILE, users);
 
-  // Ghi nhật ký giao dịch
   const transactions = readJSON(TRANSACTIONS_FILE, []);
   transactions.unshift({
     id: 'tx_admin_' + Date.now(),
@@ -469,7 +684,7 @@ app.post('/api/admin/approve-deposit', requireAdmin, (req, res) => {
   }
 
   const transactions = readJSON(TRANSACTIONS_FILE, []);
-  const txIndex = transactions.findIndex(t => t.id === txId);
+  const txIndex = transactions.findIndex(t => t.id === txId || t.code === txId);
 
   if (txIndex === -1) {
     return res.status(404).json({ success: false, message: 'Không tìm thấy giao dịch!' });
@@ -522,43 +737,77 @@ app.delete('/api/admin/users/:username', requireAdmin, (req, res) => {
 });
 
 // ---------------- API CẤU HÌNH SHOP & VIETQR (SETTINGS) ----------------
-// Lấy toàn bộ cấu hình Shop (Tên, mô tả, thông báo, danh mục, liên hệ, VietQR)
+const DEFAULT_SETTINGS = {
+  shopName: "ShopHQK",
+  shopTitle: "Cửa Hàng Số Tiện Lợi ShopHQK",
+  shopDesc: "Cung cấp tài khoản, phần mềm và dịch vụ trực tuyến bản quyền toàn quốc. Nạp tiền nhận ngay số dư qua quét mã VietQR chỉ trong vài giây.",
+  shopNotice: "⚡ Ưu đãi nạp tiền: Khuyến mãi nạp tự động qua VietQR duyệt siêu tốc! Hỗ trợ 24/7.",
+  shopNoticeActive: true,
+  contactZalo: "0349340730",
+  contactPhone: "0349340730",
+  contactTelegram: "hqk_support",
+  contactFacebook: "https://facebook.com",
+  logoText: "ShopHQK",
+  bankId: "MB",
+  accountNo: "0349340730",
+  accountName: "SHOPHQK STORE",
+  categories: ["Tất cả", "Tài khoản", "Phần mềm", "Game", "Thẻ cào", "Khác"],
+  cardAutoEnabled: true,
+  cardDiscountRate: 85,
+  webhookSecretKey: "shophqk_secret_key_2026",
+  gachthefastPartnerId: "",
+  gachthefastPartnerKey: "",
+  cardCallbackSecret: ""
+};
+
+// Lấy cấu hình công khai (Không lộ Secret Keys hay Token bảo mật)
 app.get('/api/settings', (req, res) => {
-  const defaultSettings = {
-    shopName: "ShopHQK",
-    shopTitle: "Cửa Hàng Số Tiện Lợi ShopHQK",
-    shopDesc: "Cung cấp tài khoản, phần mềm và dịch vụ trực tuyến bản quyền toàn quốc. Nạp tiền nhận ngay số dư qua quét mã VietQR chỉ trong vài giây.",
-    shopNotice: "⚡ Ưu đãi nạp tiền: Khuyến mãi nạp tự động qua VietQR duyệt siêu tốc! Hỗ trợ 24/7.",
-    shopNoticeActive: true,
-    contactZalo: "0349340730",
-    contactPhone: "0349340730",
-    contactTelegram: "hqk_support",
-    contactFacebook: "https://facebook.com",
-    logoText: "ShopHQK",
-    bankId: "MOMO",
-    accountNo: "0349340730",
-    accountName: "SHOPHQK STORE",
-    categories: ["Tất cả", "Tài khoản", "Phần mềm", "Game", "Thẻ cào", "Khác"]
-  };
   const current = readJSON(SETTINGS_FILE, {});
-  const settings = Object.assign({}, defaultSettings, current);
+  const settings = Object.assign({}, DEFAULT_SETTINGS, current);
+
+  const publicSettings = {
+    shopName: settings.shopName || "ShopHQK",
+    shopTitle: settings.shopTitle || "Cửa Hàng Số Tiện Lợi ShopHQK",
+    shopDesc: settings.shopDesc || "",
+    shopNotice: settings.shopNotice || "",
+    shopNoticeActive: settings.shopNoticeActive !== undefined ? settings.shopNoticeActive : true,
+    contactZalo: settings.contactZalo || "",
+    contactPhone: settings.contactPhone || "",
+    contactTelegram: settings.contactTelegram || "",
+    contactFacebook: settings.contactFacebook || "",
+    logoText: settings.logoText || "ShopHQK",
+    bankId: settings.bankId || "MB",
+    accountNo: settings.accountNo || "",
+    accountName: settings.accountName || "",
+    categories: settings.categories || ["Tất cả"],
+    cardAutoEnabled: settings.cardAutoEnabled !== false,
+    cardDiscountRate: settings.cardDiscountRate !== undefined ? settings.cardDiscountRate : 85
+  };
+
+  res.json({ success: true, data: publicSettings });
+});
+
+// Admin xem toàn bộ cấu hình (Bao gồm Webhook Secret Key, Partner ID/Key)
+app.get('/api/admin/settings', requireAdmin, (req, res) => {
+  const current = readJSON(SETTINGS_FILE, {});
+  const settings = Object.assign({}, DEFAULT_SETTINGS, current);
   res.json({ success: true, data: settings });
 });
 
-// Cập nhật cấu hình Shop (Admin toàn quyền thay đổi mọi thứ)
+// Cập nhật cấu hình Shop (Bảo vệ bằng requireAdmin)
 app.post('/api/settings', requireAdmin, (req, res) => {
   const currentSettings = readJSON(SETTINGS_FILE, {});
   const updatedSettings = {
+    ...DEFAULT_SETTINGS,
     ...currentSettings,
     ...req.body
   };
 
-  // Làm sạch các trường quan trọng nếu có gửi lên
+  // Làm sạch các trường quan trọng
   if (updatedSettings.accountName) {
     updatedSettings.accountName = updatedSettings.accountName.toUpperCase();
   }
   if (Array.isArray(updatedSettings.categories)) {
-    // Đảm bảo không trùng lặp và có ít nhất "Tất cả"
     let cats = updatedSettings.categories.map(c => typeof c === 'string' ? c.trim() : c).filter(Boolean);
     if (!cats.some(c => c.toLowerCase() === 'tất cả')) {
       cats.unshift('Tất cả');
@@ -570,30 +819,26 @@ app.post('/api/settings', requireAdmin, (req, res) => {
   res.json({ success: true, message: 'Đã lưu toàn bộ thay đổi cấu hình Shop thành công!', data: updatedSettings });
 });
 
-// Tạo đơn nạp tiền qua VietQR
-app.post('/api/wallet/create-deposit', (req, res) => {
-  const { username, amount } = req.body;
+// Tạo đơn nạp tiền qua VietQR (Bảo vệ bằng authenticateToken, dùng req.user.username)
+app.post('/api/wallet/create-deposit', authenticateToken, (req, res) => {
+  const { amount } = req.body;
+  const username = req.user.username;
 
-  if (!username || !amount || Number(amount) < 10000) {
+  const depositAmount = Number(amount);
+  if (!depositAmount || depositAmount < 10000) {
     return res.status(400).json({ success: false, message: 'Số tiền nạp tối thiểu là 10.000 VNĐ!' });
   }
 
   const users = readJSON(USERS_FILE, []);
-  const user = users.find(u => u.username.toLowerCase() === username.trim().toLowerCase());
+  const user = users.find(u => u.username.toLowerCase() === username.toLowerCase());
   if (!user) {
     return res.status(404).json({ success: false, message: 'Người dùng không tồn tại!' });
   }
 
-  const settings = readJSON(SETTINGS_FILE, {
-    bankId: 'MB',
-    accountNo: '0987654321',
-    accountName: 'SHOPHQK STORE'
-  });
-
-  const depositAmount = Number(amount);
+  const settings = readJSON(SETTINGS_FILE, DEFAULT_SETTINGS);
   const code = 'NAP' + Math.floor(100000 + Math.random() * 900000);
   const memo = `${code} ${user.username}`;
-  
+
   const qrUrl = `https://img.vietqr.io/image/${settings.bankId}-${settings.accountNo}-compact2.png?amount=${depositAmount}&addInfo=${encodeURIComponent(memo)}&accountName=${encodeURIComponent(settings.accountName)}`;
 
   const transactions = readJSON(TRANSACTIONS_FILE, []);
@@ -624,14 +869,16 @@ app.post('/api/wallet/create-deposit', (req, res) => {
 // ========================================================
 // HỆ THỐNG TỰ ĐỘNG DUYỆT TIỀN TỪ NGÂN HÀNG & VÍ ĐIỆN TỬ (WEBHOOK)
 // ========================================================
-
 function processAutomaticDeposit(rawContent, transferAmount, reference = '', gateway = 'BANK') {
   if (!rawContent || !transferAmount || Number(transferAmount) <= 0) {
     return { success: false, message: 'Dữ liệu giao dịch không hợp lệ!' };
   }
 
   const contentStr = String(rawContent).trim();
-  const amount = Number(transferAmount);
+  const amount = Math.floor(Number(transferAmount));
+  if (isNaN(amount) || amount <= 0) {
+    return { success: false, message: 'Số tiền chuyển khoản không hợp lệ!' };
+  }
 
   const transactions = readJSON(TRANSACTIONS_FILE, []);
   const users = readJSON(USERS_FILE, []);
@@ -662,7 +909,7 @@ function processAutomaticDeposit(rawContent, transferAmount, reference = '', gat
     }
   }
 
-  // 3. Nếu giao dịch đã hoàn tất trước đó, bỏ qua để tránh cộng trùng
+  // 3. Nếu giao dịch đã hoàn tất trước đó, bỏ qua để tránh cộng trùng (Chống Replay Attack)
   if (!tx && codeMatch) {
     const code = codeMatch[0].toUpperCase();
     const alreadyApproved = transactions.find(t => t.code && t.code.toUpperCase() === code && t.status === 'COMPLETED');
@@ -710,20 +957,23 @@ function processAutomaticDeposit(rawContent, transferAmount, reference = '', gat
   };
 }
 
-// Webhook tự động nhận thông báo tiền về từ SePay, Casso, PayOS, Ví MoMo, hoặc App ngân hàng
+// Webhook tự động nhận tiền từ SePay, Casso, PayOS, MoMo (Kiểm tra Secret Key chặt chẽ)
 app.post(['/api/webhook/payment', '/api/webhook/bank', '/api/webhook/sepay', '/api/webhook/momo'], (req, res) => {
   const settings = readJSON(SETTINGS_FILE, {});
-  
-  // Xác thực token nếu có thiết lập
+
+  // Xác thực token bắt buộc nếu có thiết lập webhookSecretKey
   const authHeader = req.headers['authorization'] || '';
   const apiKeyHeader = req.headers['x-api-key'] || '';
   const queryToken = req.query.token || req.query.apiKey || '';
   const bodyToken = req.body && (req.body.token || req.body.apiKey);
 
   const providedKey = (authHeader.startsWith('Apikey ') ? authHeader.slice(7).trim() : authHeader) || apiKeyHeader || queryToken || bodyToken;
-  
-  if (settings.webhookSecretKey && providedKey && providedKey !== settings.webhookSecretKey) {
-    return res.status(401).json({ success: false, message: 'Sai mã bảo mật Webhook!' });
+
+  if (settings.webhookSecretKey && settings.webhookSecretKey.trim() !== '') {
+    if (!providedKey || providedKey !== settings.webhookSecretKey.trim()) {
+      console.warn('[WEBHOOK BLOCKED] Từ chối request vì sai hoặc thiếu Webhook Secret Key!');
+      return res.status(401).json({ success: false, message: 'Sai mã bảo mật hoặc thiếu mã bảo mật Webhook!' });
+    }
   }
 
   let content = '';
@@ -731,14 +981,13 @@ app.post(['/api/webhook/payment', '/api/webhook/bank', '/api/webhook/sepay', '/a
   let reference = '';
   let gateway = 'BANK';
 
-  // Format Momo chuyên dụng (Web2M, Thesieure, MoMo Notification Forwarder, MacroDroid, v.v.)
+  // Format Momo
   if (req.body && (req.body.tranId || req.body.comment !== undefined || req.path.includes('momo') || req.body.partnerRefId)) {
     content = req.body.comment || req.body.message || req.body.content || req.body.noidung || req.body.description || req.body.text || '';
     amount = Number(req.body.amount || req.body.money || req.body.transferAmount || req.body.sotien || 0);
     reference = req.body.tranId || req.body.transId || req.body.partnerRefId || req.body.id || '';
     gateway = 'MOMO';
 
-    // Nếu thông báo dạng tin nhắn đẩy (VD: "Bạn vừa nhận 50.000đ từ ... Lời nhắn: NAP123456")
     if (amount <= 0) {
       const fullText = String(req.body.text || req.body.body || req.body.content || '');
       const moneyMatch = fullText.match(/(\d{1,3}(?:[.,]\d{3})*|\d+)\s*(?:đ|vnd|d|đồng)/i);
@@ -748,14 +997,14 @@ app.post(['/api/webhook/payment', '/api/webhook/bank', '/api/webhook/sepay', '/a
       if (!content) content = fullText;
     }
   }
-  // Format 1: SePay Webhook
+  // SePay Webhook
   else if (req.body && (req.body.transferAmount !== undefined || req.body.content !== undefined)) {
     content = req.body.content || req.body.description || '';
     amount = Number(req.body.transferAmount || req.body.amount || 0);
     reference = req.body.referenceCode || req.body.id || '';
     gateway = req.body.gateway || 'SePay';
   }
-  // Format 2: Casso Webhook
+  // Casso Webhook
   else if (req.body && req.body.data && Array.isArray(req.body.data) && req.body.data.length > 0) {
     const item = req.body.data[0];
     content = item.description || '';
@@ -763,14 +1012,14 @@ app.post(['/api/webhook/payment', '/api/webhook/bank', '/api/webhook/sepay', '/a
     reference = item.tid || item.id || '';
     gateway = 'Casso';
   }
-  // Format 3: PayOS Webhook
+  // PayOS Webhook
   else if (req.body && req.body.data && typeof req.body.data === 'object') {
     content = req.body.data.description || '';
     amount = Number(req.body.data.amount || 0);
     reference = req.body.data.reference || req.body.data.orderCode || '';
     gateway = 'PayOS';
   }
-  // Format 4: Universal / Custom Webhook
+  // Universal Webhook
   else if (req.body) {
     content = req.body.content || req.body.memo || req.body.description || req.body.text || req.body.comment || '';
     amount = Number(req.body.amount || req.body.money || req.body.transferAmount || req.body.transAmount || 0);
@@ -789,7 +1038,7 @@ app.post(['/api/webhook/payment', '/api/webhook/bank', '/api/webhook/sepay', '/a
   }
 });
 
-// API kiểm tra trạng thái đơn nạp theo thời gian thực (Real-time polling)
+// Kiểm tra trạng thái đơn nạp theo thời gian thực (Real-time polling)
 app.get('/api/wallet/deposit-status/:txId', (req, res) => {
   const { txId } = req.params;
   const transactions = readJSON(TRANSACTIONS_FILE, []);
@@ -808,7 +1057,7 @@ app.get('/api/wallet/deposit-status/:txId', (req, res) => {
   });
 });
 
-// API giả lập nhận tiền webhook cho Admin test
+// Giả lập nhận tiền webhook cho Admin test (Bảo vệ bằng requireAdmin)
 app.post('/api/admin/simulate-webhook', requireAdmin, (req, res) => {
   const { content, amount } = req.body;
   if (!content || !amount) {
@@ -819,7 +1068,7 @@ app.post('/api/admin/simulate-webhook', requireAdmin, (req, res) => {
   res.json(result);
 });
 
-// Xác nhận giao dịch nạp tiền (Hỗ trợ Admin kiểm tra thủ công)
+// Xác nhận giao dịch nạp tiền
 app.post('/api/wallet/confirm-deposit', (req, res) => {
   const { txId } = req.body;
   const transactions = readJSON(TRANSACTIONS_FILE, []);
@@ -842,12 +1091,8 @@ app.post('/api/wallet/confirm-deposit', (req, res) => {
 // ========================================================
 // HỆ THỐNG GẠCH THẺ CÀO TỰ ĐỘNG QUA GACHTHEFAST.COM
 // ========================================================
-
-// Hàm gửi thẻ lên gachthefast.com
 async function sendCardToGachTheFast({ telco, code, serial, amount, requestId, partnerId, partnerKey }) {
   const command = 'charging';
-  // Chuỗi MD5 chuẩn theo tài liệu GachTheFast.Com:
-  // md5(partner_key + code + command + partner_id + request_id + serial + telco)
   const rawSign = `${partnerKey}${code}${command}${partnerId}${requestId}${serial}${telco}`;
   const sign = crypto.createHash('md5').update(rawSign).digest('hex');
 
@@ -887,7 +1132,6 @@ async function sendCardToGachTheFast({ telco, code, serial, amount, requestId, p
   }
 }
 
-// Hàm xử lý kết quả Callback / trạng thái thẻ cào
 function processCardCallback(data) {
   if (!data) return { success: false, message: 'Dữ liệu callback rỗng!' };
 
@@ -899,7 +1143,7 @@ function processCardCallback(data) {
   console.log(`[XỬ LÝ THẺ CÀO CALLBACK] RequestID: "${requestId}" | Serial: "${serial}" | Status: ${statusNum} | Msg: "${message}"`);
 
   const transactions = readJSON(TRANSACTIONS_FILE, []);
-  const txIndex = transactions.findIndex(t => 
+  const txIndex = transactions.findIndex(t =>
     (requestId && (t.code === requestId || t.id === requestId)) ||
     (serial && t.serial === serial && t.status === 'PENDING')
   );
@@ -955,7 +1199,6 @@ function processCardCallback(data) {
     const realValue = Number(data.value || data.real_amount || 0);
     let creditAmount = Number(data.amount || data.receive_amount || 0);
     if (creditAmount <= 0 && realValue > 0) {
-      // Phạt trừ 50% nếu khai sai mệnh giá
       creditAmount = Math.round(realValue * (discountRate / 100) * 0.5);
     }
 
@@ -992,13 +1235,10 @@ function processCardCallback(data) {
   return { success: false, message: transactions[txIndex].note };
 }
 
-// 1. API Gửi thẻ cào nạp tiền (User)
-app.post('/api/card/deposit', (req, res) => {
-  const { username, telco, code, serial, amount } = req.body;
-
-  if (!username) {
-    return res.status(401).json({ success: false, message: 'Vui lòng đăng nhập để nạp thẻ!' });
-  }
+// 1. API Gửi thẻ cào nạp tiền (Bảo vệ bằng authenticateToken, dùng req.user.username)
+app.post('/api/card/deposit', authenticateToken, (req, res) => {
+  const { telco, code, serial, amount } = req.body;
+  const username = req.user.username;
 
   if (!telco || !code || !serial || !amount || Number(amount) < 10000) {
     return res.status(400).json({ success: false, message: 'Vui lòng điền đầy đủ loại thẻ, mệnh giá (tối thiểu 10.000đ), số serial và mã nạp (pin)!' });
@@ -1010,7 +1250,7 @@ app.post('/api/card/deposit', (req, res) => {
   const numAmount = Number(amount);
 
   const users = readJSON(USERS_FILE, []);
-  const user = users.find(u => u.username.toLowerCase() === username.trim().toLowerCase());
+  const user = users.find(u => u.username.toLowerCase() === username.toLowerCase());
   if (!user) {
     return res.status(404).json({ success: false, message: 'Người dùng không tồn tại!' });
   }
@@ -1021,11 +1261,9 @@ app.post('/api/card/deposit', (req, res) => {
   }
 
   const transactions = readJSON(TRANSACTIONS_FILE, []);
-
-  // Kiểm tra tránh gửi lặp thẻ đang PENDING hoặc đã nạp
-  const isDuplicate = transactions.some(t => 
-    t.type === 'CARD_DEPOSIT' && 
-    t.serial === cleanSerial && 
+  const isDuplicate = transactions.some(t =>
+    t.type === 'CARD_DEPOSIT' &&
+    t.serial === cleanSerial &&
     (t.status === 'PENDING' || t.status === 'COMPLETED')
   );
   if (isDuplicate) {
@@ -1057,7 +1295,6 @@ app.post('/api/card/deposit', (req, res) => {
   transactions.unshift(newTx);
   writeJSON(TRANSACTIONS_FILE, transactions);
 
-  // Nếu đã thiết lập Partner ID & Key trên GachTheFast -> Gửi tự động ngay
   if (settings.gachthefastPartnerId && settings.gachthefastPartnerKey) {
     sendCardToGachTheFast({
       telco: cleanTelco,
@@ -1117,16 +1354,41 @@ app.post('/api/card/deposit', (req, res) => {
   });
 });
 
-// 2. Webhook nhận Callback tự động từ GachTheFast.Com
+// 2. Webhook nhận Callback tự động từ GachTheFast.Com (Kiểm tra bảo mật)
 app.all(['/api/webhook/card', '/api/webhook/gachthefast'], (req, res) => {
   const data = Object.assign({}, req.query, req.body);
   console.log(`[GACHTHEFAST CALLBACK ĐẾN]`, data);
+
+  const settings = readJSON(SETTINGS_FILE, {});
+
+  // Xác thực Secret Token callback nếu cấu hình
+  const incomingToken = req.query.token || req.headers['x-callback-token'] || data.callback_token;
+  if (settings.cardCallbackSecret && settings.cardCallbackSecret.trim() !== '') {
+    if (!incomingToken || incomingToken !== settings.cardCallbackSecret.trim()) {
+      console.warn('[GACHTHEFAST CALLBACK] Bị từ chối: Sai hoặc thiếu callback token!');
+      return res.status(401).json({ status: false, message: 'Sai mã bảo mật Callback Thẻ Cào!' });
+    }
+  }
+
+  // Kiểm tra chữ ký sign nếu có
+  if (settings.gachthefastPartnerKey && data.sign) {
+    const expectedSign1 = crypto.createHash('md5').update(`${settings.gachthefastPartnerKey}${data.code || ''}${data.serial || ''}`).digest('hex');
+    const expectedSign2 = crypto.createHash('md5').update(`${settings.gachthefastPartnerKey}${data.request_id || ''}`).digest('hex');
+    const clientSign = String(data.sign).toLowerCase();
+
+    if (clientSign !== expectedSign1.toLowerCase() && clientSign !== expectedSign2.toLowerCase()) {
+      if (!incomingToken || incomingToken !== settings.cardCallbackSecret) {
+        console.warn('[GACHTHEFAST CALLBACK] Chữ ký không khớp:', { clientSign, expectedSign1, expectedSign2 });
+        return res.status(401).json({ status: false, message: 'Chữ ký giao dịch Callback không hợp lệ!' });
+      }
+    }
+  }
 
   const result = processCardCallback(data);
   return res.json({ status: true, message: result.message });
 });
 
-// 3. API Kiểm tra trạng thái thẻ cào Realtime (Polling cho người dùng)
+// 3. API Kiểm tra trạng thái thẻ cào Realtime
 app.get('/api/card/deposit-status/:txId', (req, res) => {
   const { txId } = req.params;
   const transactions = readJSON(TRANSACTIONS_FILE, []);
@@ -1148,22 +1410,28 @@ app.get('/api/card/deposit-status/:txId', (req, res) => {
   });
 });
 
-// 4. Lấy lịch sử nạp thẻ cào của tài khoản
-app.get('/api/card/history/:username', (req, res) => {
+// 4. Lấy lịch sử nạp thẻ cào của tài khoản (Bảo vệ bằng authenticateToken)
+app.get('/api/card/history/:username', authenticateToken, (req, res) => {
   const { username } = req.params;
+  const targetUser = username.trim().toLowerCase();
+
+  if (req.user.role !== 'admin' && req.user.username.toLowerCase() !== targetUser) {
+    return res.status(403).json({ success: false, message: 'Bạn không có quyền xem lịch sử của người dùng khác!' });
+  }
+
   const transactions = readJSON(TRANSACTIONS_FILE, []);
-  const cardTx = transactions.filter(t => t.type === 'CARD_DEPOSIT' && t.username.toLowerCase() === username.trim().toLowerCase());
+  const cardTx = transactions.filter(t => t.type === 'CARD_DEPOSIT' && t.username.toLowerCase() === targetUser);
   res.json({ success: true, data: cardTx });
 });
 
-// 5. Lấy danh sách thẻ cào nạp cho Admin
+// 5. Lấy danh sách thẻ cào nạp cho Admin (Bảo vệ bằng requireAdmin)
 app.get('/api/admin/cards', requireAdmin, (req, res) => {
   const transactions = readJSON(TRANSACTIONS_FILE, []);
   const cards = transactions.filter(t => t.type === 'CARD_DEPOSIT');
   res.json({ success: true, data: cards });
 });
 
-// 6. Admin duyệt thẻ cào thủ công (Dự phòng khi nhà mạng trễ)
+// 6. Admin duyệt thẻ cào thủ công (Bảo vệ bằng requireAdmin)
 app.post('/api/admin/approve-card', requireAdmin, (req, res) => {
   const { txId, amount } = req.body;
   if (!txId) {
@@ -1206,7 +1474,7 @@ app.post('/api/admin/approve-card', requireAdmin, (req, res) => {
   });
 });
 
-// 7. Admin từ chối thẻ cào lỗi
+// 7. Admin từ chối thẻ cào lỗi (Bảo vệ bằng requireAdmin)
 app.post('/api/admin/reject-card', requireAdmin, (req, res) => {
   const { txId, reason } = req.body;
   if (!txId) {
@@ -1228,7 +1496,7 @@ app.post('/api/admin/reject-card', requireAdmin, (req, res) => {
   res.json({ success: true, message: 'Đã từ chối đơn thẻ thành công!' });
 });
 
-// 8. Admin Giả lập Callback Gạch Thẻ để Test tính năng không tốn tiền
+// 8. Admin Giả lập Callback Gạch Thẻ để Test (Bảo vệ bằng requireAdmin)
 app.post('/api/admin/simulate-card-callback', requireAdmin, (req, res) => {
   const { requestId, status, amount, message } = req.body;
   if (!requestId) {
@@ -1246,18 +1514,24 @@ app.post('/api/admin/simulate-card-callback', requireAdmin, (req, res) => {
 });
 
 // ---------------- API MUA HÀNG (CHECKOUT) ----------------
-app.post('/api/orders/buy', (req, res) => {
-  const { username, productId, quantity } = req.body;
+// Bảo vệ bằng authenticateToken, trừ tiền đúng tài khoản đăng nhập (req.user.username)
+app.post('/api/orders/buy', authenticateToken, (req, res) => {
+  const { productId, quantity } = req.body;
+  const username = req.user.username;
 
-  if (!username || !productId || !quantity || quantity < 1) {
+  if (!productId || !quantity || quantity < 1) {
     return res.status(400).json({ success: false, message: 'Thông tin mua hàng không hợp lệ!' });
   }
 
-  const qty = Number(quantity);
+  const qty = Math.floor(Number(quantity));
+  if (qty <= 0) {
+    return res.status(400).json({ success: false, message: 'Số lượng mua tối thiểu là 1!' });
+  }
+
   const users = readJSON(USERS_FILE, []);
-  const userIndex = users.findIndex(u => u.username.toLowerCase() === username.trim().toLowerCase());
+  const userIndex = users.findIndex(u => u.username.toLowerCase() === username.toLowerCase());
   if (userIndex === -1) {
-    return res.status(404).json({ success: false, message: 'Vui lòng đăng nhập để mua hàng!' });
+    return res.status(404).json({ success: false, message: 'Tài khoản người dùng không tồn tại!' });
   }
 
   const products = readJSON(PRODUCTS_FILE, []);
@@ -1311,15 +1585,21 @@ app.post('/api/orders/buy', (req, res) => {
   });
 });
 
-// Lịch sử giao dịch của user
-app.get('/api/transactions/:username', (req, res) => {
+// Lịch sử giao dịch của user (Bảo vệ bằng authenticateToken, chỉ xem của chính mình hoặc admin)
+app.get('/api/transactions/:username', authenticateToken, (req, res) => {
   const { username } = req.params;
+  const targetUser = username.trim().toLowerCase();
+
+  if (req.user.role !== 'admin' && req.user.username.toLowerCase() !== targetUser) {
+    return res.status(403).json({ success: false, message: 'Bạn không có quyền xem lịch sử của người dùng khác!' });
+  }
+
   const transactions = readJSON(TRANSACTIONS_FILE, []);
-  const userTx = transactions.filter(t => t.username.toLowerCase() === username.trim().toLowerCase());
+  const userTx = transactions.filter(t => t.username.toLowerCase() === targetUser);
   res.json({ success: true, data: userTx });
 });
 
-// SPA fallback routing (Express 4 & 5 compatible)
+// SPA fallback routing
 app.use((req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
@@ -1328,5 +1608,6 @@ app.use((req, res) => {
 app.listen(PORT, () => {
   console.log(`===============================================`);
   console.log(`  Shophqk Server dang chay tai: http://localhost:${PORT}`);
+  console.log(`  Bao mat: JWT HS256, Safe File I/O, Webhook Protected`);
   console.log(`===============================================`);
 });

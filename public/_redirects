@@ -1,6 +1,7 @@
-# API Proxy tới máy chủ Backend Cloudflare Tunnel
-/api/*  https://refinance-precisely-position-divisions.trycloudflare.com/api/:splat  200!
-/uploads/*  https://refinance-precisely-position-divisions.trycloudflare.com/uploads/:splat  200!
+# Tùy chọn proxy Backend API khi triển khai riêng Frontend trên Netlify
+# Thay đổi domain bên dưới nếu triển khai backend trên Render/VPS/Railway
+/api/*  https://shophqk.onrender.com/api/:splat  200!
+/uploads/*  https://shophqk.onrender.com/uploads/:splat  200!
 
 # SPA Routing
 /*  /index.html  200

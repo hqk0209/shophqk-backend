@@ -4,11 +4,49 @@ const API_BASE = (window.location.hostname.includes('netlify.app'))
   : '';
 
 const _rawFetch = window.fetch;
-window.fetch = function(url, options) {
-  if (typeof url === 'string' && url.startsWith('/api/')) {
-    url = API_BASE + url;
+window.fetch = function(url, options = {}) {
+  options = options || {};
+  let targetUrl = url;
+  if (typeof targetUrl === 'string' && targetUrl.startsWith('/api/')) {
+    targetUrl = API_BASE + targetUrl;
   }
-  return _rawFetch(url, options);
+
+  // Tự động đính kèm token xác thực JWT Bearer
+  const token = localStorage.getItem('shophqk_token');
+  if (token) {
+    if (!options.headers) {
+      options.headers = {};
+    }
+    if (options.headers instanceof Headers) {
+      if (!options.headers.has('Authorization')) {
+        options.headers.set('Authorization', `Bearer ${token}`);
+      }
+    } else if (Array.isArray(options.headers)) {
+      const hasAuth = options.headers.some(([k]) => k.toLowerCase() === 'authorization');
+      if (!hasAuth) {
+        options.headers.push(['Authorization', `Bearer ${token}`]);
+      }
+    } else {
+      if (!options.headers['Authorization'] && !options.headers['authorization']) {
+        options.headers['Authorization'] = `Bearer ${token}`;
+      }
+    }
+  }
+
+  return _rawFetch(targetUrl, options).then(response => {
+    // Tự động xử lý khi phiên đăng nhập hết hạn (401)
+    if (response.status === 401 && typeof url === 'string' && !url.includes('/api/auth/login') && !url.includes('/api/auth/register') && !url.includes('/api/settings')) {
+      if (currentUser) {
+        console.warn('[AUTH] Phiên đăng nhập hết hạn hoặc không hợp lệ (401)');
+        localStorage.removeItem('shophqk_token');
+        localStorage.removeItem('shophqk_user');
+        currentUser = null;
+        updateAuthUI();
+        showToast('Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại!', 'warning');
+      }
+    }
+    return response;
+  });
 };
 
 // Chuẩn hóa đường dẫn ảnh: Tự động trỏ về domain máy chủ nếu chạy trên Netlify
@@ -272,6 +310,20 @@ function renderCategoryPills() {
   }
 }
 
+async function loadAdminFullSettings() {
+  if (!currentUser || currentUser.role !== 'admin') return;
+  try {
+    const res = await fetch('/api/admin/settings');
+    const data = await res.json();
+    if (data.success && data.data) {
+      currentSettings = { ...currentSettings, ...data.data };
+      fillAdminSettingsForms();
+    }
+  } catch (err) {
+    console.warn('Error fetching full admin settings:', err);
+  }
+}
+
 function fillAdminSettingsForms() {
   const s = currentSettings;
   // Form Thông Tin Shop
@@ -294,11 +346,13 @@ function fillAdminSettingsForms() {
 
   // Form VietQR
   const bankInp = document.getElementById('admCfgBankId');
-  if (bankInp) bankInp.value = s.bankId || 'MOMO';
+  if (bankInp) bankInp.value = s.bankId || 'MB';
   const accNoInp = document.getElementById('admCfgAccountNo');
   if (accNoInp) accNoInp.value = s.accountNo || '';
   const accNameInp = document.getElementById('admCfgAccountName');
   if (accNameInp) accNameInp.value = s.accountName || '';
+  const whKeyInp = document.getElementById('admCfgWebhookSecretKey');
+  if (whKeyInp) whKeyInp.value = s.webhookSecretKey || '';
 
   // Form Thẻ Cào & GachTheFast
   const cardAutoChk = document.getElementById('admCfgCardAutoEnabled');
@@ -309,6 +363,8 @@ function fillAdminSettingsForms() {
   if (gtfKeyInp) gtfKeyInp.value = s.gachthefastPartnerKey || '';
   const cardRateInp = document.getElementById('admCfgCardDiscountRate');
   if (cardRateInp) cardRateInp.value = s.cardDiscountRate !== undefined ? s.cardDiscountRate : 85;
+  const cardCbSecInp = document.getElementById('admCfgCardCallbackSecret');
+  if (cardCbSecInp) cardCbSecInp.value = s.cardCallbackSecret || '';
 }
 
 // ---------------- PRODUCTS LOGIC ----------------
@@ -787,20 +843,23 @@ async function handleAdminSaveShopInfo(e) {
   }
 }
 
-// ---------------- LƯU CẤU HÌNH VIETQR ----------------
+// ---------------- LƯU CẤU HÌNH VIETQR & WEBHOOK ----------------
 async function handleAdminSaveSettings(e) {
   e.preventDefault();
   const bankId = document.getElementById('admCfgBankId').value;
   const accountNo = document.getElementById('admCfgAccountNo').value.trim();
   const accountName = document.getElementById('admCfgAccountName').value.trim().toUpperCase();
+  const webhookSecretKey = (document.getElementById('admCfgWebhookSecretKey')?.value || '').trim();
 
   try {
     const res = await fetch('/api/settings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        adminUsername: currentUser ? currentUser.username : 'hqk',
-        bankId, accountNo, accountName
+        bankId,
+        accountNo,
+        accountName,
+        webhookSecretKey
       })
     });
 
@@ -809,13 +868,14 @@ async function handleAdminSaveSettings(e) {
       currentSettings.bankId = bankId;
       currentSettings.accountNo = accountNo;
       currentSettings.accountName = accountName;
-      showToast('Đã lưu cấu hình tài khoản VietQR của Shop!', 'success');
+      if (webhookSecretKey) currentSettings.webhookSecretKey = webhookSecretKey;
+      showToast('Đã lưu cấu hình tài khoản VietQR & Webhook thành công!', 'success');
       closeModal('adminModal');
     } else {
       showToast(data.message, 'error');
     }
   } catch (err) {
-    showToast('Lỗi khi lưu cấu hình', 'error');
+    showToast('Lỗi khi lưu cấu hình: ' + err.message, 'error');
   }
 }
 
@@ -932,6 +992,9 @@ async function handleAuthSubmit(e) {
       showToast(data.message, 'success');
       currentUser = data.data;
       localStorage.setItem('shophqk_user', JSON.stringify(currentUser));
+      if (data.token) {
+        localStorage.setItem('shophqk_token', data.token);
+      }
       updateAuthUI();
       closeModal('authModal');
       document.getElementById('authForm').reset();
@@ -947,9 +1010,55 @@ async function handleAuthSubmit(e) {
 function logout() {
   currentUser = null;
   localStorage.removeItem('shophqk_user');
+  localStorage.removeItem('shophqk_token');
   updateAuthUI();
   renderProducts();
   showToast('Đã đăng xuất tài khoản!', 'info');
+}
+
+// ---------------- ĐỔI MẬT KHẨU TÀI KHOẢN ----------------
+function openChangePasswordModal() {
+  if (!currentUser) {
+    showToast('Vui lòng đăng nhập để đổi mật khẩu!', 'warning');
+    openAuthModal('login');
+    return;
+  }
+  openModal('changePasswordModal');
+}
+
+async function handleChangePasswordSubmit(e) {
+  e.preventDefault();
+  const oldPassword = document.getElementById('cpOldPassword').value;
+  const newPassword = document.getElementById('cpNewPassword').value;
+  const confirmPassword = document.getElementById('cpConfirmPassword').value;
+
+  if (newPassword !== confirmPassword) {
+    showToast('Mật khẩu xác nhận không trùng khớp!', 'warning');
+    return;
+  }
+
+  if (newPassword.length < 6) {
+    showToast('Mật khẩu mới phải có ít nhất 6 ký tự!', 'warning');
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/auth/change-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ oldPassword, newPassword })
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast(data.message, 'success');
+      closeModal('changePasswordModal');
+      document.getElementById('changePasswordForm').reset();
+    } else {
+      showToast(data.message || 'Lỗi khi đổi mật khẩu', 'error');
+    }
+  } catch (err) {
+    showToast('Lỗi kết nối máy chủ: ' + err.message, 'error');
+  }
 }
 
 function updateAuthUI() {
@@ -1021,6 +1130,7 @@ function openAdminPanel() {
     return;
   }
   openModal('adminModal');
+  loadAdminFullSettings();
   switchAdminTab('product');
 }
 
@@ -1072,7 +1182,7 @@ function switchAdminTab(rawTab) {
     } else if (tab === 'categories') {
       renderAdminCategoriesList();
     } else if (tab === 'shopInfo' || tab === 'settings') {
-      fillAdminSettingsForms();
+      loadAdminFullSettings();
     } else if (tab === 'users') {
       loadAdminUsers();
     } else if (tab === 'deposits') {
@@ -1081,7 +1191,7 @@ function switchAdminTab(rawTab) {
       loadAdminOrders();
     } else if (tab === 'cards') {
       loadAdminCards();
-      fillAdminSettingsForms();
+      loadAdminFullSettings();
     }
   } catch (err) {
     console.error('Lỗi khi tải tab admin:', err);
@@ -2174,17 +2284,18 @@ async function handleSaveCardSettings(e) {
   const partnerId = (document.getElementById('admCfgGtfPartnerId')?.value || '').trim();
   const partnerKey = (document.getElementById('admCfgGtfPartnerKey')?.value || '').trim();
   const discountRate = Number(document.getElementById('admCfgCardDiscountRate')?.value || 85);
+  const cardCallbackSecret = (document.getElementById('admCfgCardCallbackSecret')?.value || '').trim();
 
   try {
     const res = await fetch('/api/settings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        adminUsername: currentUser.username,
         cardAutoEnabled: cardAuto,
         gachthefastPartnerId: partnerId,
         gachthefastPartnerKey: partnerKey,
-        cardDiscountRate: discountRate
+        cardDiscountRate: discountRate,
+        cardCallbackSecret: cardCallbackSecret
       })
     });
 

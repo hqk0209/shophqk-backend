@@ -23,5 +23,6 @@
   "cardAutoEnabled": true,
   "gachthefastPartnerId": "",
   "gachthefastPartnerKey": "",
-  "cardDiscountRate": 85
+  "cardDiscountRate": 85,
+  "cardCallbackSecret": ""
 }
