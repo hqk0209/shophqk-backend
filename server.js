@@ -48,10 +48,20 @@ app.use(cors());
 app.use(express.json({ limit: '25mb' }));
 app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 
-// Bộ nhớ đệm tài nguyên tĩnh (Trình duyệt tải 1 lần & nạp 0ms từ Disk Cache)
+// Bộ nhớ đệm tài nguyên tĩnh (Tự động kiểm tra bản mới cho JS & HTML, nạp 0ms cho ảnh tĩnh)
 app.use(express.static(path.join(__dirname, 'public'), {
-  maxAge: '2h',
-  etag: true
+  etag: true,
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.html') || filePath.endsWith('.js')) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+    } else if (filePath.endsWith('.css')) {
+      res.setHeader('Cache-Control', 'public, max-age=300');
+    } else {
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+    }
+  }
 }));
 
 // Đảm bảo thư mục lưu ảnh upload tồn tại

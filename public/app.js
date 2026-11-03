@@ -826,6 +826,8 @@ function openEditProductModal(id) {
 
   openModal('adminModal');
   switchAdminTab('product');
+  const formElem = document.getElementById('adminAddProductForm');
+  if (formElem) formElem.scrollIntoView({ behavior: 'smooth', block: 'start' });
   lucide.createIcons();
 }
 
@@ -941,7 +943,10 @@ async function handleAdminAddProductSubmit(e) {
       cancelEditingProduct();
       currentCategory = 'all';
       renderCategoryPills();
-      loadProducts();
+      await loadProducts();
+      // Tự động cuộn nhẹ xuống danh sách để Admin nhìn thấy sản phẩm vừa đăng
+      const listElem = document.getElementById('adminProductsList');
+      if (listElem) listElem.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     } else {
       showToast(data.message || 'Lỗi khi xử lý sản phẩm', 'error');
     }
@@ -973,7 +978,7 @@ async function deleteProduct(productId) {
     const data = await res.json();
     if (data.success) {
       showToast(data.message || 'Đã xóa sản phẩm thành công', 'success');
-      loadProducts();
+      await loadProducts();
     } else {
       showToast(data.message || 'Lỗi khi xóa sản phẩm', 'error');
     }
