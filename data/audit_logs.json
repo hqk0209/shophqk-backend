@@ -1,5 +1,14 @@
 [
   {
+    "id": "audit_1793698122506_225",
+    "action": "DELETE_PRODUCT",
+    "actor": "hqk",
+    "target": "prod_1793698113550",
+    "details": "Xóa sản phẩm [Sản phẩm test thứ 3]",
+    "ip": "171.253.123.190",
+    "timestamp": "2026-11-03T09:28:42.506Z"
+  },
+  {
     "id": "audit_1793698113551_674",
     "action": "CREATE_PRODUCT",
     "actor": "hqk",
