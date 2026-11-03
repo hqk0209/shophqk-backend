@@ -375,6 +375,16 @@ function fillAdminSettingsForms() {
   if (cardRateInp) cardRateInp.value = s.cardDiscountRate !== undefined ? s.cardDiscountRate : 85;
   const cardCbSecInp = document.getElementById('admCfgCardCallbackSecret');
   if (cardCbSecInp) cardCbSecInp.value = s.cardCallbackSecret || '';
+
+  // Form Cloud Sync & Mã PIN Cấp 2
+  const pinInp = document.getElementById('admCfgSecurityPin');
+  if (pinInp) pinInp.value = s.adminSecurityPin || '';
+  const ghRepoInp = document.getElementById('admCfgGithubRepo');
+  if (ghRepoInp) ghRepoInp.value = s.githubRepo || '';
+  const ghTokenInp = document.getElementById('admCfgGithubToken');
+  if (ghTokenInp) ghTokenInp.value = s.githubToken || '';
+  const imgbbInp = document.getElementById('admCfgImgbbKey');
+  if (imgbbInp) imgbbInp.value = s.imgbbApiKey || '';
 }
 
 // ---------------- PRODUCTS LOGIC ----------------
@@ -896,26 +906,41 @@ async function handleAdminSaveSettings(e) {
   const accountNo = document.getElementById('admCfgAccountNo').value.trim();
   const accountName = document.getElementById('admCfgAccountName').value.trim().toUpperCase();
   const webhookSecretKey = (document.getElementById('admCfgWebhookSecretKey')?.value || '').trim();
+  const adminSecurityPin = (document.getElementById('admCfgSecurityPin')?.value || '').trim();
+  const githubRepo = (document.getElementById('admCfgGithubRepo')?.value || '').trim();
+  const githubToken = (document.getElementById('admCfgGithubToken')?.value || '').trim();
+  const imgbbApiKey = (document.getElementById('admCfgImgbbKey')?.value || '').trim();
+
+  let adminPin = '';
+  if (currentSettings.hasSecurityPin) {
+    adminPin = prompt('Nhập Mã PIN Quản Trị Cấp 2 Hiện Tại để xác nhận thay đổi cấu hình:');
+    if (adminPin === null) return;
+  }
 
   try {
     const res = await fetch('/api/settings', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-admin-pin': adminPin
+      },
       body: JSON.stringify({
         bankId,
         accountNo,
         accountName,
-        webhookSecretKey
+        webhookSecretKey,
+        adminSecurityPin,
+        githubRepo,
+        githubToken,
+        imgbbApiKey,
+        adminPin
       })
     });
 
     const data = await res.json();
     if (data.success) {
-      currentSettings.bankId = bankId;
-      currentSettings.accountNo = accountNo;
-      currentSettings.accountName = accountName;
-      if (webhookSecretKey) currentSettings.webhookSecretKey = webhookSecretKey;
-      showToast('Đã lưu cấu hình tài khoản VietQR & Webhook thành công!', 'success');
+      currentSettings = { ...currentSettings, ...data.data };
+      showToast('Đã lưu cấu hình tài khoản VietQR, Cloud Sync & Bảo mật thành công!', 'success');
       closeModal('adminModal');
     } else {
       showToast(data.message, 'error');
@@ -2725,5 +2750,64 @@ async function adminToggleBan(username, isBanned) {
     }
   } catch (err) {
     showToast('Lỗi kết nối máy chủ', 'error');
+  }
+}
+
+// ---------------- 5. KHÔI PHỤC DỮ LIỆU TỪ FILE MÁY TÍNH (.JSON) ----------------
+async function handleUploadRestoreBackup() {
+  const fileInput = document.getElementById('admBackupFileInput');
+  if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
+    showToast('Vui lòng chọn một file sao lưu (.json) từ máy tính!', 'error');
+    return;
+  }
+
+  const file = fileInput.files[0];
+  if (!file.name.endsWith('.json')) {
+    showToast('Chỉ chấp nhận file định dạng .json!', 'error');
+    return;
+  }
+
+  const ok = confirm(`CẢNH BÁO NGUY HIỂM:\nBạn có chắc chắn muốn khôi phục toàn bộ hệ thống từ file [${file.name}]?\nToàn bộ dữ liệu hiện tại trên web sẽ được khôi phục về trạng thái của bản sao lưu này!`);
+  if (!ok) return;
+
+  let adminPin = '';
+  if (currentSettings.hasSecurityPin) {
+    adminPin = prompt('Nhập Mã PIN Bảo Vệ Quản Trị Cấp 2:');
+    if (adminPin === null) return;
+  }
+
+  try {
+    const text = await file.text();
+    const snapshotData = JSON.parse(text);
+
+    if (!snapshotData || !snapshotData.data) {
+      showToast('Nội dung file sao lưu không hợp lệ hoặc bị lỗi!', 'error');
+      return;
+    }
+
+    showToast('Đang nạp và khôi phục toàn bộ dữ liệu shop lên máy chủ...', 'info');
+
+    const res = await fetch('/api/admin/backups/upload-restore', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-admin-pin': adminPin
+      },
+      body: JSON.stringify({ snapshotData, adminPin })
+    });
+
+    const data = await res.json();
+    if (data.success) {
+      showToast(data.message, 'success');
+      loadProducts();
+      loadShopSettings();
+      loadAdminUsers();
+      loadAdminBackups();
+      fileInput.value = '';
+    } else {
+      showToast(data.message || 'Lỗi khôi phục từ file tải lên', 'error');
+    }
+  } catch (err) {
+    showToast('Lỗi đọc hoặc gửi file: ' + err.message, 'error');
   }
 }

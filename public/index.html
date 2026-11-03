@@ -586,6 +586,26 @@
             <p class="text-[10px] text-slate-500 mt-1">Khi cài đặt PIN này, các thao tác nguy hiểm (đổi STK ngân hàng, xóa tiền user, xóa người dùng, khôi phục backup) bắt buộc phải nhập đúng PIN.</p>
           </div>
 
+          <!-- CLOUD PERSISTENCE & RENDER AUTO-SYNC -->
+          <div class="mt-4 pt-3 border-t border-slate-800 space-y-2">
+            <h5 class="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
+              <i data-lucide="cloud" class="w-3.5 h-3.5"></i> Chống Mất Dữ Liệu Khi Render Ngủ / Reset (Cloud Sync)
+            </h5>
+            <div>
+              <label class="block text-[11px] font-semibold text-slate-300 mb-0.5">GitHub Repository (ví dụ: username/shophqk)</label>
+              <input type="text" id="admCfgGithubRepo" placeholder="username/shophqk" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-200 font-mono focus:outline-none focus:border-emerald-500">
+            </div>
+            <div>
+              <label class="block text-[11px] font-semibold text-slate-300 mb-0.5">GitHub Personal Access Token (PAT)</label>
+              <input type="password" id="admCfgGithubToken" placeholder="Dán mã GitHub Token vào đây..." class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-200 font-mono focus:outline-none focus:border-emerald-500">
+              <p class="text-[10px] text-slate-500 mt-0.5">Khi có GitHub Token, mọi thay đổi dữ liệu sẽ tự động đẩy về kho GitHub, Render restart sẽ không bao giờ mất dữ liệu.</p>
+            </div>
+            <div>
+              <label class="block text-[11px] font-semibold text-slate-300 mb-0.5">ImgBB API Key (Lưu ảnh sản phẩm vĩnh viễn trên Cloud)</label>
+              <input type="password" id="admCfgImgbbKey" placeholder="Lấy miễn phí tại api.imgbb.com..." class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-200 font-mono focus:outline-none focus:border-emerald-500">
+            </div>
+          </div>
+
           <button type="submit" class="w-full py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl shadow-lg transition text-xs">
             Lưu Cấu Hình VietQR & Bảo Mật
           </button>
@@ -870,6 +890,22 @@
           <button type="button" onclick="triggerCreateBackup()" class="px-3 py-1.5 bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow transition">
             <i data-lucide="save" class="w-3.5 h-3.5"></i> Tạo Bản Sao Lưu Ngay
           </button>
+        </div>
+
+        <!-- Khôi phục từ file sao lưu trên máy tính -->
+        <div class="bg-slate-950 p-3 rounded-xl border border-indigo-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h5 class="text-xs font-bold text-indigo-300 flex items-center gap-1.5">
+              <i data-lucide="upload-cloud" class="w-4 h-4 text-indigo-400"></i> Khôi Phục Dữ Liệu Từ File Máy Tính (.json)
+            </h5>
+            <p class="text-[11px] text-slate-400">Nếu Render bị xóa đĩa/reset, chọn file backup đã lưu trên máy tính của bạn để khôi phục ngay lập tức 100%.</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <input type="file" id="admBackupFileInput" accept=".json" class="text-xs text-slate-400 file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-indigo-600/30 file:text-indigo-300 hover:file:bg-indigo-600/50 cursor-pointer">
+            <button type="button" onclick="handleUploadRestoreBackup()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl flex items-center gap-1 shadow transition shrink-0">
+              <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i> Nạp Dữ Liệu
+            </button>
+          </div>
         </div>
 
         <div class="overflow-x-auto border border-slate-800 rounded-xl">

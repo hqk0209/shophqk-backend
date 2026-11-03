@@ -96,8 +96,86 @@ function safeWriteJSON(filePath, data) {
   }
 }
 
+// ---------------- 3.1 GITHUB AUTO-SYNC CLOUD PERSISTENCE ----------------
+let githubSyncQueue = new Set();
+let githubSyncTimeout = null;
+
+async function syncFileToGitHub(relativeFilePath) {
+  const settings = readJSON(SETTINGS_FILE, {});
+  const token = process.env.GITHUB_TOKEN || settings.githubToken;
+  const repo = process.env.GITHUB_REPO || settings.githubRepo;
+  const branch = process.env.GITHUB_BRANCH || settings.githubBranch || 'main';
+
+  if (!token || !repo || token.trim() === '' || repo.trim() === '') return;
+
+  try {
+    const fullPath = path.join(__dirname, relativeFilePath);
+    if (!fs.existsSync(fullPath)) return;
+    const content = fs.readFileSync(fullPath, 'utf8');
+    const base64Content = Buffer.from(content).toString('base64');
+    const apiPath = relativeFilePath.replace(/\\/g, '/');
+
+    const getRes = await fetch(`https://api.github.com/repos/${repo.trim()}/contents/${apiPath}?ref=${branch.trim()}`, {
+      headers: {
+        'Authorization': `Bearer ${token.trim()}`,
+        'User-Agent': 'ShopHQK-Server',
+        'Accept': 'application/vnd.github.v3+json'
+      }
+    });
+
+    let sha = null;
+    if (getRes.status === 200) {
+      const info = await getRes.json();
+      sha = info.sha;
+    }
+
+    const putRes = await fetch(`https://api.github.com/repos/${repo.trim()}/contents/${apiPath}`, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${token.trim()}`,
+        'User-Agent': 'ShopHQK-Server',
+        'Content-Type': 'application/json',
+        'Accept': 'application/vnd.github.v3+json'
+      },
+      body: JSON.stringify({
+        message: `[ShopHQK Auto-Sync] Update ${apiPath} [skip ci]`,
+        content: base64Content,
+        branch: branch.trim(),
+        ...(sha ? { sha } : {})
+      })
+    });
+
+    if (putRes.ok) {
+      console.log(`[GITHUB AUTO-SYNC] Đã lưu vĩnh viễn file ${apiPath} lên GitHub!`);
+    }
+  } catch (err) {
+    console.warn(`[GITHUB AUTO-SYNC WARNING] ${err.message}`);
+  }
+}
+
+function triggerGitHubSync(filePath) {
+  try {
+    const rel = path.relative(__dirname, filePath);
+    if (!rel.startsWith('data' + path.sep)) return;
+    githubSyncQueue.add(rel);
+
+    if (githubSyncTimeout) clearTimeout(githubSyncTimeout);
+    githubSyncTimeout = setTimeout(async () => {
+      const toSync = Array.from(githubSyncQueue);
+      githubSyncQueue.clear();
+      for (const relFile of toSync) {
+        await syncFileToGitHub(relFile);
+      }
+    }, 4000);
+  } catch (e) {}
+}
+
 function writeJSON(filePath, data) {
-  return safeWriteJSON(filePath, data);
+  const ok = safeWriteJSON(filePath, data);
+  if (ok) {
+    triggerGitHubSync(filePath);
+  }
+  return ok;
 }
 
 function readJSON(filePath, defaultValue = []) {
@@ -801,8 +879,8 @@ app.put('/api/products/:id', requireAdmin, (req, res) => {
   res.json({ success: true, message: 'Đã cập nhật sản phẩm thành công!', data: products[pIndex] });
 });
 
-// Upload ảnh sản phẩm
-app.post('/api/admin/upload-image', requireAdmin, (req, res) => {
+// Upload ảnh sản phẩm (Hỗ trợ ImgBB Cloud vĩnh viễn chống mất ảnh trên Render)
+app.post('/api/admin/upload-image', requireAdmin, async (req, res) => {
   const { imageBase64 } = req.body;
   if (!imageBase64) {
     return res.status(400).json({ success: false, message: 'Vui lòng cung cấp dữ liệu hình ảnh!' });
@@ -828,6 +906,31 @@ app.post('/api/admin/upload-image', requireAdmin, (req, res) => {
       return res.status(400).json({ success: false, message: 'Kích thước ảnh tối đa cho phép là 10MB!' });
     }
 
+    // 1. Tự động đẩy lên ImgBB Cloud vĩnh viễn nếu cấu hình API Key
+    const settings = readJSON(SETTINGS_FILE, {});
+    const imgbbKey = process.env.IMGBB_API_KEY || settings.imgbbApiKey;
+    if (imgbbKey && imgbbKey.trim() !== '') {
+      try {
+        const formData = new URLSearchParams();
+        formData.append('image', buffer.toString('base64'));
+        const imgbbRes = await fetch(`https://api.imgbb.com/1/upload?key=${imgbbKey.trim()}`, {
+          method: 'POST',
+          body: formData
+        });
+        const imgbbJson = await imgbbRes.json();
+        if (imgbbJson && imgbbJson.data && imgbbJson.data.url) {
+          return res.json({
+            success: true,
+            message: 'Tải ảnh lên ImgBB Cloud vĩnh viễn thành công!',
+            imageUrl: imgbbJson.data.url
+          });
+        }
+      } catch (err) {
+        console.warn('[IMGBB FAILED, FALLBACK TO DISK]', err.message);
+      }
+    }
+
+    // 2. Lưu vào public/uploads
     const safeName = 'img_' + Date.now() + '_' + crypto.randomBytes(4).toString('hex') + '.' + ext;
     const savePath = path.join(UPLOADS_DIR, safeName);
     fs.writeFileSync(savePath, buffer);
@@ -2162,6 +2265,37 @@ app.get('/api/admin/backups/download/:filename', requireAdmin, (req, res) => {
   res.download(filePath, filename);
 });
 
+// Khôi phục dữ liệu trực tiếp từ file JSON do Admin tải lên từ máy tính
+app.post('/api/admin/backups/upload-restore', requireAdmin, requireAdminPin, (req, res) => {
+  const { snapshotData } = req.body;
+  if (!snapshotData || !snapshotData.data) {
+    return res.status(400).json({ success: false, message: 'Dữ liệu file sao lưu không hợp lệ!' });
+  }
+
+  try {
+    createSystemBackup('BEFORE_UPLOAD_RESTORE_SAFETY');
+
+    if (snapshotData.data.users) writeJSON(USERS_FILE, snapshotData.data.users);
+    if (snapshotData.data.products) writeJSON(PRODUCTS_FILE, snapshotData.data.products);
+    if (snapshotData.data.transactions) writeJSON(TRANSACTIONS_FILE, snapshotData.data.transactions);
+    if (snapshotData.data.settings) writeJSON(SETTINGS_FILE, snapshotData.data.settings);
+
+    logAudit({
+      action: 'UPLOAD_RESTORE_BACKUP',
+      actor: req.adminUser.username,
+      details: 'Khôi phục hệ thống từ file tải lên trực tiếp từ máy tính',
+      ip: getClientIP(req)
+    });
+
+    res.json({
+      success: true,
+      message: 'Đã nạp và khôi phục toàn bộ dữ liệu shop thành công từ file máy tính!'
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Lỗi nạp file khôi phục: ' + err.message });
+  }
+});
+
 // ---------------- 21. CẤU HÌNH SHOP (SETTINGS & ADMIN SECURITY PIN) ----------------
 const DEFAULT_SETTINGS = {
   shopName: "ShopHQK",
@@ -2184,7 +2318,14 @@ const DEFAULT_SETTINGS = {
   gachthefastPartnerId: "",
   gachthefastPartnerKey: "",
   cardCallbackSecret: "",
-  adminSecurityPin: "" // Mã PIN bảo vệ cấp 2
+  adminSecurityPin: "", // Mã PIN bảo vệ cấp 2
+  githubRepo: "",
+  githubToken: "",
+  githubBranch: "main",
+  imgbbApiKey: "",
+  discordBackupWebhook: "",
+  telegramBotToken: "",
+  telegramChatId: ""
 };
 
 // Cấu hình công khai
