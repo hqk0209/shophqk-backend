@@ -1,5 +1,23 @@
 [
   {
+    "id": "audit_1793693532206_867",
+    "action": "CREATE_PRODUCT",
+    "actor": "hqk",
+    "target": "prod_1793693532205",
+    "details": "Tạo sản phẩm [Test Product 123] với giá 50000đ (Kho: 10)",
+    "ip": "171.253.123.190",
+    "timestamp": "2026-11-03T08:12:12.206Z"
+  },
+  {
+    "id": "audit_1793693532049_443",
+    "action": "LOGIN_SUCCESS",
+    "actor": "hqk",
+    "target": "",
+    "details": "Đăng nhập thành công (admin)",
+    "ip": "171.253.123.190",
+    "timestamp": "2026-11-03T08:12:12.049Z"
+  },
+  {
     "id": "audit_1793693476544_133",
     "action": "LOGIN_SUCCESS",
     "actor": "hqk",
