@@ -666,43 +666,7 @@ function seedAdminUser() {
 seedAdminUser();
 
 function seedDefaultProducts() {
-  const products = readJSON(PRODUCTS_FILE, []);
-  if (products.length === 0) {
-    const defaults = [
-      {
-        id: "prod_hqk_1",
-        name: "Tài Khoản Youtube Premium 1 Năm",
-        price: 100000,
-        stock: 99,
-        type: "account_keys",
-        items: [
-          "yt_vip_user1@mail.com|PassYoutube2026",
-          "yt_vip_user2@mail.com|PassYoutube2026",
-          "yt_vip_user3@mail.com|PassYoutube2026"
-        ],
-        category: "Tài khoản",
-        description: "Tài khoản Youtube Premium không quảng cáo, nghe nhạc tắt màn hình, chất lượng âm thanh cao cấp.",
-        image: "https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?w=500&auto=format&fit=crop&q=60",
-        downloadUrl: "https://youtube.com/premium",
-        createdAt: new Date().toISOString()
-      },
-      {
-        id: "prod_hqk_2",
-        name: "Gói Định Vị Android VIP Antiban 2026",
-        price: 120000,
-        stock: 50,
-        type: "download",
-        items: [],
-        category: "FreeFireMax",
-        description: "Gói định vị chuyên nghiệp cho Android, cập nhật liên tục, hỗ trợ cài đặt nhanh gọn 100%.",
-        image: "https://images.unsplash.com/photo-1542751371-adc38448a05e?w=500&auto=format&fit=crop&q=60",
-        downloadUrl: "https://shophqk.netlify.app",
-        createdAt: new Date().toISOString()
-      }
-    ];
-    writeJSON(PRODUCTS_FILE, defaults);
-    console.log('[OK] Da khoi tao san pham mac dinh cho Shophqk.');
-  }
+  // Đã tắt tự động tạo sản phẩm mẫu để tôn trọng danh sách sản phẩm do Admin quản lý
 }
 seedDefaultProducts();
 
