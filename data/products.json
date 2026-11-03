@@ -1,1 +1,15 @@
-[]
+[
+  {
+    "id": "prod_1793695844789",
+    "name": "Định vị súng xanh vàng",
+    "price": 0,
+    "stock": 99,
+    "type": "download",
+    "items": [],
+    "category": "FreeFire Thường",
+    "description": "",
+    "image": "/uploads/img_1793695844648_34d44ee7.jpg",
+    "downloadUrl": "https://link4m.net/Msf7YqK",
+    "createdAt": "2026-11-03T08:50:44.789Z"
+  }
+]
