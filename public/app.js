@@ -43,19 +43,25 @@ window.fetch = function(url, options = {}) {
     }
   }
 
-  // Tự động đính kèm thông tin Admin hqk nếu đang đăng nhập admin
-  if (currentUser && (currentUser.username === 'hqk' || currentUser.role === 'admin')) {
+  // Tự động đính kèm thông tin Admin hqk nếu đang đăng nhập admin hoặc gọi API admin/settings
+  const admName = (currentUser && currentUser.username) ? currentUser.username : 'hqk';
+  const isAdminPath = typeof targetUrl === 'string' && (
+    targetUrl.includes('/api/admin') || 
+    targetUrl.includes('/api/settings') || 
+    (options.method && options.method !== 'GET' && targetUrl.includes('/api/products'))
+  );
+  if (admName && (isAdminPath || (currentUser && (currentUser.username === 'hqk' || currentUser.role === 'admin')))) {
     if (!options.headers) {
       options.headers = {};
     }
     if (options.headers instanceof Headers) {
-      if (!options.headers.has('X-Admin-Username')) options.headers.set('X-Admin-Username', 'hqk');
+      if (!options.headers.has('X-Admin-Username')) options.headers.set('X-Admin-Username', admName);
     } else if (Array.isArray(options.headers)) {
       if (!options.headers.some(([k]) => k.toLowerCase() === 'x-admin-username')) {
-        options.headers.push(['X-Admin-Username', 'hqk']);
+        options.headers.push(['X-Admin-Username', admName]);
       }
     } else {
-      if (!options.headers['X-Admin-Username']) options.headers['X-Admin-Username'] = 'hqk';
+      if (!options.headers['X-Admin-Username']) options.headers['X-Admin-Username'] = admName;
     }
   }
 
@@ -79,14 +85,45 @@ window.fetch = function(url, options = {}) {
   });
 };
 
-// Chuẩn hóa đường dẫn ảnh: Tự động trỏ về domain máy chủ nếu chạy trên Netlify
+function getAdminUsername() {
+  if (currentUser && currentUser.username) return currentUser.username;
+  return 'hqk';
+}
+
+// Chuẩn hóa đường dẫn ảnh: Tự động trỏ về domain máy chủ và xử lý Google Drive / Dropbox / Base64
 function formatImageUrl(url) {
   if (!url || typeof url !== 'string' || url.trim() === '') {
-    return 'https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?w=500&auto=format&fit=crop&q=60';
+    return 'https://images.unsplash.com/photo-1542751371-adc38448a05e?w=500&auto=format&fit=crop&q=60';
   }
+  url = url.trim();
+
+  // 1. Ảnh Base64 hiển thị trực tiếp
+  if (url.startsWith('data:image/')) {
+    return url;
+  }
+
+  // 2. Tự động chuyển link xem Google Drive sang CDN ảnh trực tiếp tốc độ cao của Google
+  const gDriveMatch = url.match(/drive\.google\.com\/(?:file\/d\/|open\?id=|uc\?id=)([a-zA-Z0-9_-]+)/);
+  if (gDriveMatch && gDriveMatch[1]) {
+    return `https://lh3.googleusercontent.com/d/${gDriveMatch[1]}`;
+  }
+
+  // 3. Tự động chuyển link Dropbox sang direct link
+  if (url.includes('dropbox.com') && url.includes('dl=0')) {
+    return url.replace('dl=0', 'raw=1');
+  }
+
+  // 4. Tự động chuyển link Imgur trang xem sang direct image
+  const imgurMatch = url.match(/imgur\.com\/([a-zA-Z0-9]+)$/);
+  if (imgurMatch && imgurMatch[1]) {
+    return `https://i.imgur.com/${imgurMatch[1]}.png`;
+  }
+
+  // 5. Đường dẫn upload nội bộ server
   if (url.startsWith('/uploads/')) {
     return API_BASE ? API_BASE + url : url;
   }
+
   return url;
 }
 
@@ -357,7 +394,7 @@ function renderCategoryPills() {
 }
 
 async function loadAdminFullSettings() {
-  if (!currentUser || currentUser.role !== 'admin') return;
+  if ((!currentUser || currentUser.role !== 'admin') && getAdminUsername() !== 'hqk') return;
   try {
     const res = await fetch('/api/admin/settings');
     const data = await res.json();
@@ -576,26 +613,107 @@ function handleDrop(e) {
 }
 
 function processSelectedImage(file) {
-  if (!file.type.startsWith('image/')) {
+  if (!file || !file.type.startsWith('image/')) {
     showToast('Vui lòng chọn file hình ảnh (JPG, PNG, WEBP, GIF, SVG)!', 'error');
     return;
   }
   currentSelectedFile = file;
+
   const reader = new FileReader();
   reader.onload = (event) => {
-    currentUploadedBase64 = event.target.result;
-    const previewCont = document.getElementById('imagePreviewContainer');
-    const previewImg = document.getElementById('imagePreviewImg');
-    const previewName = document.getElementById('imagePreviewName');
-    const previewStatus = document.getElementById('imagePreviewStatus');
+    const rawDataUrl = event.target.result;
 
-    if (previewCont) previewCont.classList.remove('hidden');
-    if (previewImg) previewImg.src = currentUploadedBase64;
-    if (previewName) previewName.innerText = file.name;
-    if (previewStatus) previewStatus.innerText = (file.size / 1024).toFixed(1) + ' KB - Đã sẵn sàng';
-    showToast('Đã nhận diện ảnh: ' + file.name, 'success');
+    // Ảnh vector SVG hoặc GIF động giữ nguyên
+    if (file.type === 'image/svg+xml' || file.type === 'image/gif') {
+      applyProcessedImage(rawDataUrl, file.name, file.size);
+      return;
+    }
+
+    // Tự động tối ưu dung lượng và kích thước ảnh cho mobile & web bằng Canvas
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+        const maxDim = 1000;
+
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+
+        // Xuất ảnh WebP chuẩn nét nhẹ (~40KB - 90KB)
+        const compressedDataUrl = canvas.toDataURL('image/webp', 0.85);
+        const estBytes = Math.round((compressedDataUrl.length - 22) * 3 / 4);
+        applyProcessedImage(compressedDataUrl, file.name, estBytes);
+      } catch (err) {
+        console.warn('Canvas resize fallback', err);
+        applyProcessedImage(rawDataUrl, file.name, file.size);
+      }
+    };
+    img.onerror = () => {
+      applyProcessedImage(rawDataUrl, file.name, file.size);
+    };
+    img.src = rawDataUrl;
   };
   reader.readAsDataURL(file);
+}
+
+function applyProcessedImage(dataUrl, fileName, byteSize) {
+  currentUploadedBase64 = dataUrl;
+  const previewCont = document.getElementById('imagePreviewContainer');
+  const previewImg = document.getElementById('imagePreviewImg');
+  const previewName = document.getElementById('imagePreviewName');
+  const previewStatus = document.getElementById('imagePreviewStatus');
+
+  if (previewCont) previewCont.classList.remove('hidden');
+  if (previewImg) previewImg.src = dataUrl;
+  if (previewName) previewName.innerText = fileName;
+  const kb = (byteSize / 1024).toFixed(1);
+  if (previewStatus) previewStatus.innerText = `${kb} KB - Tối ưu siêu nhẹ`;
+  showToast(`Đã nhận diện và tối ưu ảnh (${kb} KB)!`, 'success');
+}
+
+// Live preview khi dán URL ảnh trực tiếp
+function previewDirectImageUrl() {
+  const urlInp = document.getElementById('admProdImage');
+  const livePreview = document.getElementById('admLiveUrlPreview');
+  const liveImg = document.getElementById('admLiveUrlImg');
+  const liveStatus = document.getElementById('admLiveUrlStatus');
+  if (!urlInp || !livePreview) return;
+
+  const rawUrl = urlInp.value.trim();
+  if (!rawUrl) {
+    livePreview.classList.add('hidden');
+    return;
+  }
+
+  const formatted = formatImageUrl(rawUrl);
+  livePreview.classList.remove('hidden');
+  if (liveImg) {
+    liveImg.src = formatted;
+    liveImg.onload = () => {
+      if (liveStatus) {
+        liveStatus.innerHTML = `<span class="text-emerald-400 font-bold">✓ Ảnh hợp lệ & tương thích 100%</span>`;
+      }
+    };
+    liveImg.onerror = () => {
+      if (liveStatus) {
+        liveStatus.innerHTML = `<span class="text-amber-400">⚠️ Link ảnh có thể bị chặn hoặc sai quyền chia sẻ!</span>`;
+      }
+    };
+  }
 }
 
 function clearSelectedImage(e) {
@@ -637,6 +755,11 @@ function openEditProductModal(id) {
   if (!prod) return;
 
   editingProductId = id;
+  currentUploadedBase64 = null;
+  currentSelectedFile = null;
+  const urlPrev = document.getElementById('admLiveUrlPreview');
+  if (urlPrev) urlPrev.classList.add('hidden');
+
   document.getElementById('admEditingProdId').value = id;
   document.getElementById('admProdName').value = prod.name;
   document.getElementById('admProdPrice').value = prod.price;
@@ -781,7 +904,7 @@ async function handleAdminAddProductSubmit(e) {
 }
 
 async function deleteProduct(productId) {
-  if (!currentUser || currentUser.role !== 'admin') return;
+  if ((!currentUser || currentUser.role !== 'admin') && getAdminUsername() !== 'hqk') return;
   if (!confirm('Bạn có chắc chắn muốn xóa sản phẩm này khỏi Shop?')) return;
 
   try {
@@ -883,9 +1006,12 @@ async function handleAddCategory() {
   try {
     const res = await fetch('/api/settings', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'X-Admin-Username': getAdminUsername()
+      },
       body: JSON.stringify({
-        adminUsername: currentUser ? currentUser.username : 'hqk',
+        adminUsername: getAdminUsername(),
         categories: newCats
       })
     });
@@ -894,6 +1020,7 @@ async function handleAddCategory() {
       currentSettings.categories = newCats;
       input.value = '';
       applyShopSettingsToUI();
+      renderAdminCategoriesList();
       showToast(`Đã thêm mục [${cat}] vào Shop!`, 'success');
     }
   } catch (err) {
@@ -909,9 +1036,12 @@ async function handleDeleteCategory(catName) {
   try {
     const res = await fetch('/api/settings', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'X-Admin-Username': getAdminUsername()
+      },
       body: JSON.stringify({
-        adminUsername: currentUser ? currentUser.username : 'hqk',
+        adminUsername: getAdminUsername(),
         categories: newCats
       })
     });
@@ -919,6 +1049,7 @@ async function handleDeleteCategory(catName) {
     if (data.success) {
       currentSettings.categories = newCats;
       applyShopSettingsToUI();
+      renderAdminCategoriesList();
       showToast(`Đã xóa mục [${catName}]`, 'success');
     }
   } catch (err) {
@@ -942,9 +1073,12 @@ async function handleAdminSaveShopInfo(e) {
   try {
     const res = await fetch('/api/settings', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'X-Admin-Username': getAdminUsername()
+      },
       body: JSON.stringify({
-        adminUsername: currentUser ? currentUser.username : 'hqk',
+        adminUsername: getAdminUsername(),
         shopName,
         shopTitle,
         shopDesc,
@@ -960,8 +1094,7 @@ async function handleAdminSaveShopInfo(e) {
     if (data.success) {
       currentSettings = { ...currentSettings, ...data.data };
       applyShopSettingsToUI();
-      showToast('Đã lưu toàn bộ thay đổi tên shop, mô tả và cấu hình!', 'success');
-      closeModal('adminModal');
+      showToast('Đã lưu toàn bộ thay đổi tên shop, mô tả và giao diện!', 'success');
     } else {
       showToast(data.message || 'Lỗi khi lưu cấu hình', 'error');
     }
@@ -993,9 +1126,11 @@ async function handleAdminSaveSettings(e) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'X-Admin-Username': getAdminUsername(),
         'x-admin-pin': adminPin
       },
       body: JSON.stringify({
+        adminUsername: getAdminUsername(),
         bankId,
         accountNo,
         accountName,
@@ -1012,7 +1147,6 @@ async function handleAdminSaveSettings(e) {
     if (data.success) {
       currentSettings = { ...currentSettings, ...data.data };
       showToast('Đã lưu cấu hình tài khoản VietQR, Cloud Sync & Bảo mật thành công!', 'success');
-      closeModal('adminModal');
     } else {
       showToast(data.message, 'error');
     }
@@ -1522,6 +1656,15 @@ function switchAdminTab(rawTab) {
     console.error('Lỗi khi tải tab admin:', err);
   }
 
+  // Cuộn tab đang chọn vào giữa tầm nhìn trên màn hình điện thoại
+  const activeCfg = adminTabConfig[tab];
+  if (activeCfg) {
+    const activeBtn = document.getElementById(activeCfg.btnId);
+    if (activeBtn && typeof window !== 'undefined' && window.innerWidth < 768) {
+      activeBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    }
+  }
+
   if (window.lucide && typeof lucide.createIcons === 'function') {
     lucide.createIcons();
   }
@@ -1533,7 +1676,7 @@ async function loadAdminUsers() {
   table.innerHTML = `<tr><td colspan="5" class="p-3 text-center text-slate-500">Đang tải danh sách người dùng...</td></tr>`;
 
   try {
-    const res = await fetch(`/api/admin/users?adminUsername=${currentUser.username}`);
+    const res = await fetch(`/api/admin/users?adminUsername=${getAdminUsername()}`);
     const data = await res.json();
 
     if (!data.success || data.data.length === 0) {
@@ -1542,7 +1685,7 @@ async function loadAdminUsers() {
     }
 
     table.innerHTML = data.data.map(u => {
-      const isSelf = u.username.toLowerCase() === currentUser.username.toLowerCase();
+      const isSelf = currentUser && u.username && u.username.toLowerCase() === currentUser.username.toLowerCase();
       const isAdmin = u.role === 'admin';
 
       return `
@@ -1684,9 +1827,12 @@ async function submitAddBalance(e) {
   try {
     const res = await fetch('/api/admin/add-balance', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'X-Admin-Username': getAdminUsername()
+      },
       body: JSON.stringify({
-        adminUsername: currentUser.username,
+        adminUsername: getAdminUsername(),
         targetUsername: targetAdjustUser,
         amount: amountVal,
         action: currentBalanceMode,
@@ -1699,7 +1845,7 @@ async function submitAddBalance(e) {
       showToast(data.message, 'success');
       closeModal('addBalanceModal');
       loadAdminUsers();
-      if (targetAdjustUser.toLowerCase() === currentUser.username.toLowerCase()) {
+      if (currentUser && targetAdjustUser.toLowerCase() === currentUser.username.toLowerCase()) {
         currentUser.balance = data.newBalance;
         localStorage.setItem('shophqk_user', JSON.stringify(currentUser));
         updateAuthUI();
@@ -1718,8 +1864,11 @@ async function adminDeleteUser(username) {
   try {
     const res = await fetch(`/api/admin/users/${username}`, {
       method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ adminUsername: currentUser.username })
+      headers: { 
+        'Content-Type': 'application/json',
+        'X-Admin-Username': getAdminUsername()
+      },
+      body: JSON.stringify({ adminUsername: getAdminUsername() })
     });
 
     const data = await res.json();
@@ -1740,7 +1889,7 @@ async function loadAdminDeposits() {
   table.innerHTML = `<tr><td colspan="6" class="p-3 text-center text-slate-500">Đang tải danh sách đơn nạp...</td></tr>`;
 
   try {
-    const res = await fetch(`/api/admin/deposits?adminUsername=${currentUser.username}`);
+    const res = await fetch(`/api/admin/deposits?adminUsername=${getAdminUsername()}`);
     const data = await res.json();
 
     if (!data.success || data.data.length === 0) {
@@ -1802,7 +1951,7 @@ async function loadAdminOrders() {
   table.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-slate-500">Đang tải lịch sử đơn mua của các user...</td></tr>`;
 
   try {
-    const res = await fetch(`/api/admin/orders?adminUsername=${encodeURIComponent(currentUser.username)}`);
+    const res = await fetch(`/api/admin/orders?adminUsername=${encodeURIComponent(getAdminUsername())}`);
     const data = await res.json();
     if (!data.success || !Array.isArray(data.data) || data.data.length === 0) {
       table.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-slate-500">Chưa có user nào mua hàng.</td></tr>`;
@@ -1908,9 +2057,12 @@ async function adminApproveDeposit(txId) {
   try {
     const res = await fetch('/api/admin/approve-deposit', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'X-Admin-Username': getAdminUsername()
+      },
       body: JSON.stringify({
-        adminUsername: currentUser.username,
+        adminUsername: getAdminUsername(),
         txId: txId
       })
     });
@@ -1919,7 +2071,7 @@ async function adminApproveDeposit(txId) {
     if (data.success) {
       showToast(data.message, 'success');
       loadAdminDeposits();
-      if (data.targetUser.toLowerCase() === currentUser.username.toLowerCase()) {
+      if (currentUser && data.targetUser.toLowerCase() === currentUser.username.toLowerCase()) {
         currentUser.balance = data.newBalance;
         localStorage.setItem('shophqk_user', JSON.stringify(currentUser));
         updateAuthUI();
@@ -2194,9 +2346,12 @@ async function testSimulateWebhook() {
   try {
     const res = await fetch('/api/admin/simulate-webhook', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'X-Admin-Username': getAdminUsername()
+      },
       body: JSON.stringify({
-        adminUsername: currentUser.username,
+        adminUsername: getAdminUsername(),
         content: content,
         amount: amount
       })
@@ -2616,9 +2771,12 @@ async function adminApproveCard(txId) {
   try {
     const res = await fetch('/api/admin/approve-card', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'X-Admin-Username': getAdminUsername()
+      },
       body: JSON.stringify({
-        adminUsername: currentUser.username,
+        adminUsername: getAdminUsername(),
         txId: txId,
         amount: numAmt
       })
@@ -2642,9 +2800,12 @@ async function adminRejectCard(txId) {
   try {
     const res = await fetch('/api/admin/reject-card', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'X-Admin-Username': getAdminUsername()
+      },
       body: JSON.stringify({
-        adminUsername: currentUser.username,
+        adminUsername: getAdminUsername(),
         txId: txId,
         reason: reason
       })
@@ -2672,8 +2833,12 @@ async function handleSaveCardSettings(e) {
   try {
     const res = await fetch('/api/settings', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'X-Admin-Username': getAdminUsername()
+      },
       body: JSON.stringify({
+        adminUsername: getAdminUsername(),
         cardAutoEnabled: cardAuto,
         gachthefastPartnerId: partnerId,
         gachthefastPartnerKey: partnerKey,
@@ -2715,9 +2880,12 @@ async function testSimulateCardCallback() {
   try {
     const res = await fetch('/api/admin/simulate-card-callback', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'X-Admin-Username': getAdminUsername()
+      },
       body: JSON.stringify({
-        adminUsername: currentUser.username,
+        adminUsername: getAdminUsername(),
         requestId: requestId,
         status: status
       })

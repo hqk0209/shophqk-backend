@@ -223,7 +223,7 @@
 
   <!-- MODAL: BẢNG QUẢN TRỊ ADMIN TOÀN DIỆN (SIDEBAR CHUYÊN NGHIỆP TRÊN PC & CUỘN TRÊN MOBILE) -->
   <div id="adminModal" class="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-md hidden">
-    <div class="bg-slate-900 border border-amber-500/30 rounded-2xl max-w-6xl w-full shadow-2xl relative h-[92vh] max-h-[94vh] flex flex-col overflow-hidden">
+    <div class="bg-slate-900 border border-amber-500/30 rounded-2xl max-w-6xl w-full shadow-2xl relative h-[96dvh] sm:h-[92vh] max-h-[98dvh] sm:max-h-[94vh] flex flex-col overflow-hidden">
       <!-- Modal Header -->
       <div class="flex items-center justify-between p-3.5 sm:px-6 border-b border-slate-800 bg-slate-950/70 shrink-0">
         <div class="flex items-center gap-2.5">
@@ -298,7 +298,7 @@
           <div class="grid grid-cols-2 gap-3">
             <div>
               <label class="block text-xs font-semibold text-slate-300 mb-1">Giá bán (VNĐ) *</label>
-              <input type="number" id="admProdPrice" required min="0" step="1000" placeholder="100000" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-100 focus:outline-none focus:border-amber-500">
+              <input type="number" id="admProdPrice" required min="0" step="any" placeholder="100000" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-100 focus:outline-none focus:border-amber-500">
             </div>
             <div>
               <label class="block text-xs font-semibold text-slate-300 mb-1">Số lượng tồn kho *</label>
@@ -339,33 +339,40 @@
               <span class="text-[11px] text-amber-400">Kéo thả hoặc mở thư mục</span>
             </label>
 
-            <!-- Dropzone Container -->
-            <div id="dropzoneContainer" onclick="triggerFileInput()" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event)" class="cursor-pointer border-2 border-dashed border-slate-700 hover:border-amber-500 bg-slate-950/70 p-4 rounded-2xl text-center transition flex flex-col items-center justify-center gap-2 group">
-              <input type="file" id="admProductFileInput" accept="image/*" class="hidden" onchange="handleFileSelect(event)">
-              <div class="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center group-hover:scale-105 transition">
+            <!-- Dropzone Container: Native touch input overlay cho cả Mobile & Desktop -->
+            <div id="dropzoneContainer" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event)" class="relative cursor-pointer border-2 border-dashed border-slate-700 hover:border-amber-500 bg-slate-950/70 p-4 rounded-2xl text-center transition flex flex-col items-center justify-center gap-2 group overflow-hidden">
+              <input type="file" id="admProductFileInput" accept="image/*" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" onchange="handleFileSelect(event)">
+              <div class="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center group-hover:scale-105 transition pointer-events-none">
                 <i data-lucide="image-plus" class="w-5 h-5"></i>
               </div>
-              <p class="text-xs font-semibold text-slate-200">
+              <p class="text-xs font-semibold text-slate-200 pointer-events-none">
                 <span class="text-amber-400 font-bold">Kéo thả ảnh vào đây</span> hoặc <span class="text-indigo-400 underline">bấm để chọn ảnh từ máy/điện thoại</span>
               </p>
-              <p class="text-[10px] text-slate-500">Hỗ trợ JPG, PNG, WEBP, GIF, SVG</p>
+              <p class="text-[10px] text-slate-500 pointer-events-none">Hỗ trợ JPG, PNG, WEBP, GIF, SVG (Tự động nén siêu nhẹ cho điện thoại)</p>
             </div>
 
             <!-- Preview box khi đã chọn ảnh -->
-            <div id="imagePreviewContainer" class="hidden mt-2 relative rounded-xl border border-slate-700 bg-slate-950 p-2 flex items-center gap-3">
+            <div id="imagePreviewContainer" class="hidden mt-2 relative rounded-xl border border-slate-700 bg-slate-950 p-2 flex items-center gap-3 z-20">
               <img id="imagePreviewImg" src="" class="w-14 h-14 object-cover rounded-lg border border-slate-800 shrink-0">
               <div class="flex-1 min-w-0">
                 <p id="imagePreviewName" class="text-xs font-bold text-slate-200 truncate">anh_san_pham.png</p>
-                <p id="imagePreviewStatus" class="text-[11px] text-emerald-400">Đã chọn ảnh</p>
+                <p id="imagePreviewStatus" class="text-[11px] text-emerald-400 font-semibold">Đã chọn ảnh</p>
               </div>
-              <button type="button" onclick="clearSelectedImage(event)" class="px-2 py-1 bg-rose-500/20 hover:bg-rose-500 text-rose-300 hover:text-white rounded-lg transition text-xs flex items-center gap-1">
+              <button type="button" onclick="clearSelectedImage(event)" class="relative z-30 px-2.5 py-1.5 bg-rose-500/20 hover:bg-rose-500 text-rose-300 hover:text-white rounded-lg transition text-xs flex items-center gap-1">
                 <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Xóa ảnh
               </button>
             </div>
 
-            <!-- Fallback URL nhập link online -->
-            <div class="mt-2">
-              <input type="url" id="admProdImage" placeholder="Hoặc dán trực tiếp link ảnh online: https://..." class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-amber-500">
+            <!-- Fallback URL nhập link online với live preview thời gian thực -->
+            <div class="mt-2 space-y-2">
+              <input type="url" id="admProdImage" oninput="previewDirectImageUrl()" placeholder="Hoặc dán link ảnh online (Google Drive, Imgur, CDN): https://..." class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-amber-500 font-mono">
+              <div id="admLiveUrlPreview" class="hidden rounded-xl border border-slate-700 bg-slate-950 p-2 flex items-center gap-3">
+                <img id="admLiveUrlImg" src="" class="w-12 h-12 object-cover rounded-lg border border-slate-800 shrink-0">
+                <div class="flex-1 min-w-0">
+                  <div id="admLiveUrlStatus" class="text-xs">Đang kiểm tra link ảnh...</div>
+                  <p class="text-[10px] text-slate-400 truncate">Hỗ trợ tự động chuyển đổi Google Drive & Dropbox</p>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -1384,7 +1391,7 @@
       <!-- Header & Badges -->
       <div class="flex flex-col sm:flex-row gap-4 mb-4">
         <div class="w-full sm:w-36 aspect-[16/10] sm:aspect-square bg-slate-950 rounded-xl overflow-hidden border border-slate-800 shrink-0 relative">
-          <img id="detailProdImage" src="" alt="Sản phẩm" class="w-full h-full object-cover">
+          <img id="detailProdImage" src="" alt="Sản phẩm" onerror="this.onerror=null; this.src='https://images.unsplash.com/photo-1542751371-adc38448a05e?w=500&auto=format&fit=crop&q=60'" class="w-full h-full object-cover">
           <div id="detailProdCategory" class="absolute top-2 left-2 bg-slate-900/90 text-indigo-300 text-[10px] font-bold px-2 py-0.5 rounded-lg border border-slate-700 shadow">
             Danh mục
           </div>

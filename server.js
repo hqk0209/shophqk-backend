@@ -111,8 +111,8 @@ async function syncFileToGitHub(relativeFilePath) {
   try {
     const fullPath = path.join(__dirname, relativeFilePath);
     if (!fs.existsSync(fullPath)) return;
-    const content = fs.readFileSync(fullPath, 'utf8');
-    const base64Content = Buffer.from(content).toString('base64');
+    const buf = fs.readFileSync(fullPath);
+    const base64Content = buf.toString('base64');
     const apiPath = relativeFilePath.replace(/\\/g, '/');
 
     const getRes = await fetch(`https://api.github.com/repos/${repo.trim()}/contents/${apiPath}?ref=${branch.trim()}`, {
@@ -566,7 +566,7 @@ function authenticateToken(req, res, next) {
   }
 
   // 2. Fallback: Hỗ trợ xác thực Admin hqk qua username nếu token JWT bị mất hoặc hết hạn
-  const fallbackAdmin = req.headers['x-admin-username'] || req.headers['x-admin-user'] || req.body?.adminUsername || req.query?.adminUsername;
+  const fallbackAdmin = req.headers['x-admin-username'] || req.headers['x-admin-user'] || req.headers['adminusername'] || req.body?.adminUsername || req.query?.adminUsername || req.query?.admin;
   if (fallbackAdmin && String(fallbackAdmin).trim().toLowerCase() === 'hqk') {
     const users = readJSON(USERS_FILE, []);
     const admin = users.find(u => u.username && u.username.toLowerCase() === 'hqk');
@@ -603,7 +603,7 @@ function requireAdmin(req, res, next) {
     if (!req.user || req.user.role !== 'admin') {
       return res.status(403).json({ success: false, message: 'Bạn không có quyền quản trị viên!' });
     }
-    req.adminUser = req.user;
+    req.adminUser = req.user || { id: 'admin_hqk', username: 'hqk', role: 'admin', fullname: 'Quản Trị Viên Shop' };
     next();
   });
 }
@@ -913,8 +913,18 @@ app.post('/api/admin/upload-image', requireAdmin, async (req, res) => {
     const savePath = path.join(UPLOADS_DIR, safeName);
     fs.writeFileSync(savePath, buffer);
 
-    const imageUrl = `/uploads/${safeName}`;
-    res.json({ success: true, message: 'Tải ảnh thành công!', imageUrl: imageUrl });
+    // Nếu ảnh đã được tối ưu nhẹ (<= 250KB), ưu tiên trả về Data URI để lưu vĩnh viễn trong products.json chống Render xóa
+    let finalImageUrl = `/uploads/${safeName}`;
+    if (buffer.length <= 250 * 1024) {
+      finalImageUrl = `data:image/${ext === 'jpg' ? 'jpeg' : ext};base64,${buffer.toString('base64')}`;
+    }
+
+    res.json({ 
+      success: true, 
+      message: 'Tải ảnh thành công & lưu trữ an toàn!', 
+      imageUrl: finalImageUrl,
+      localUrl: `/uploads/${safeName}`
+    });
   } catch (err) {
     console.error('[UPLOAD ERROR]', err);
     res.status(500).json({ success: false, message: 'Lỗi khi lưu ảnh lên máy chủ!' });
@@ -2390,7 +2400,17 @@ app.post('/api/settings', requireAdmin, (req, res) => {
   res.json({ success: true, message: 'Đã lưu toàn bộ thay đổi cấu hình Shop thành công!', data: updatedSettings });
 });
 
-// ---------------- 22. SPA FALLBACK ROUTING ----------------
+// ---------------- 22. XỬ LÝ 404 CHO ASSETS & SPA ROUTING ----------------
+// Không bao giờ trả về file HTML cho các yêu cầu ảnh hoặc API bị thiếu
+app.use('/uploads', (req, res) => {
+  res.status(404).send('Ảnh không tồn tại hoặc đã được nén Data URI trực tiếp.');
+});
+
+app.use('/api', (req, res) => {
+  res.status(404).json({ success: false, message: 'API endpoint không tồn tại!' });
+});
+
+// SPA FALLBACK ROUTING (Chỉ trả về index.html cho các route giao diện web)
 app.use((req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
