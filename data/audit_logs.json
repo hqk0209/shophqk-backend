@@ -1,5 +1,14 @@
 [
   {
+    "id": "audit_1793695727829_782",
+    "action": "UPDATE_SETTINGS",
+    "actor": "hqk",
+    "target": "",
+    "details": "Cập nhật cấu hình Shop & VietQR",
+    "ip": "171.253.123.190",
+    "timestamp": "2026-11-03T08:48:47.829Z"
+  },
+  {
     "id": "audit_1793689643609_422",
     "action": "CREATE_BACKUP",
     "actor": "hqk",
