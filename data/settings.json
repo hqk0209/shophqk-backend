@@ -17,15 +17,21 @@
     "FreeFire Thường",
     "FreeFireMax"
   ],
-  "adminUsername": "hqk",
-  "autoApproveEnabled": true,
-  "webhookSecretKey": "shophqk_secret_key_2026",
   "cardAutoEnabled": true,
+  "cardDiscountRate": 85,
+  "webhookSecretKey": "shophqk_secret_key_2026",
   "gachthefastPartnerId": "",
   "gachthefastPartnerKey": "",
-  "cardDiscountRate": 85,
   "cardCallbackSecret": "",
+  "adminSecurityPin": "02092009",
   "githubRepo": "hqk0209/shophqk-backend",
   "githubToken": "",
-  "githubBranch": "main"
+  "githubBranch": "main",
+  "imgbbApiKey": "",
+  "discordBackupWebhook": "",
+  "telegramBotToken": "",
+  "telegramChatId": "",
+  "adminUsername": "hqk",
+  "autoApproveEnabled": true,
+  "adminPin": ""
 }
