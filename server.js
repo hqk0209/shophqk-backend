@@ -138,7 +138,7 @@ async function syncFileToGitHub(relativeFilePath) {
         'Accept': 'application/vnd.github.v3+json'
       },
       body: JSON.stringify({
-        message: `[ShopHQK Auto-Sync] Update ${apiPath} [skip ci]`,
+        message: `[ShopHQK Auto-Sync] Update ${apiPath} [skip render] [skip ci]`,
         content: base64Content,
         branch: branch.trim(),
         ...(sha ? { sha } : {})
@@ -157,6 +157,13 @@ function triggerGitHubSync(filePath) {
   try {
     const rel = path.relative(__dirname, filePath);
     if (!rel.startsWith('data' + path.sep)) return;
+
+    // CHỈ ĐỒNG BỘ CÁC FILE DỮ LIỆU CỐT LÕI (SẢN PHẨM, CẤU HÌNH, NGƯỜI DÙNG, GIAO DỊCH)
+    // TUYỆT ĐỐI KHÔNG ĐỒNG BỘ audit_logs HOẶC webhook_logs VÌ SẼ GÂY BÃO COMMIT VÀ LÀM RENDER KHỞI ĐỘNG LẠI LIÊN TỤC
+    const allowed = ['products.json', 'settings.json', 'users.json', 'transactions.json'];
+    const base = path.basename(rel);
+    if (!allowed.includes(base)) return;
+
     githubSyncQueue.add(rel);
 
     if (githubSyncTimeout) clearTimeout(githubSyncTimeout);
@@ -166,8 +173,46 @@ function triggerGitHubSync(filePath) {
       for (const relFile of toSync) {
         await syncFileToGitHub(relFile);
       }
-    }, 4000);
+    }, 15000); // Gom thay đổi trong 15s để tránh spam commit
   } catch (e) {}
+}
+
+// ---------------- 3.2 TỰ ĐỘNG KÉO DỮ LIỆU MỚI NHẤT TỪ GITHUB KHI KHỞI ĐỘNG ----------------
+async function syncFromGitHubOnStartup() {
+  const settings = readJSON(SETTINGS_FILE, {});
+  const token = process.env.GITHUB_TOKEN || settings.githubToken;
+  const repo = process.env.GITHUB_REPO || settings.githubRepo;
+  const branch = process.env.GITHUB_BRANCH || settings.githubBranch || 'main';
+
+  if (!token || !repo || token.trim() === '' || repo.trim() === '') return;
+
+  const coreFiles = ['data/products.json', 'data/settings.json', 'data/users.json'];
+  for (const relFile of coreFiles) {
+    try {
+      const apiPath = relFile.replace(/\\/g, '/');
+      const res = await fetch(`https://raw.githubusercontent.com/${repo.trim()}/${branch.trim()}/${apiPath}`, {
+        headers: {
+          'Authorization': `Bearer ${token.trim()}`,
+          'User-Agent': 'ShopHQK-Server'
+        }
+      });
+      if (res.ok) {
+        const remoteText = await res.text();
+        const remoteJSON = JSON.parse(remoteText);
+        const localPath = path.join(__dirname, relFile);
+        const localJSON = readJSON(localPath, null);
+
+        if (relFile === 'data/products.json' && Array.isArray(remoteJSON)) {
+          if (!localJSON || !Array.isArray(localJSON) || remoteJSON.length > localJSON.length) {
+            safeWriteJSON(localPath, remoteJSON);
+            console.log(`[BOOT SYNC] Đã cập nhật ${relFile} (${remoteJSON.length} sản phẩm) từ GitHub!`);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn(`[BOOT SYNC] Bỏ qua kéo file ${relFile}:`, err.message);
+    }
+  }
 }
 
 function writeJSON(filePath, data) {
@@ -234,6 +279,7 @@ class AsyncMutex {
 }
 
 const transactionMutex = new AsyncMutex();
+const productMutex = new AsyncMutex();
 
 // ---------------- 5. RATE LIMITING & CHỐNG TẤN CÔNG BRUTE-FORCE ----------------
 const rateLimitStores = {
@@ -704,48 +750,53 @@ app.get('/api/products', (req, res) => {
 });
 
 // Thêm sản phẩm mới (Admin)
-app.post('/api/products', requireAdmin, (req, res) => {
-  const cleanBody = sanitizeObject(req.body);
-  const { name, price, stock, category, description, image, downloadUrl, type = 'download', itemsText = '' } = cleanBody;
+app.post('/api/products', requireAdmin, async (req, res) => {
+  await productMutex.acquire();
+  try {
+    const cleanBody = sanitizeObject(req.body);
+    const { name, price, stock, category, description, image, downloadUrl, type = 'download', itemsText = '' } = cleanBody;
 
-  if (!name || price === undefined) {
-    return res.status(400).json({ success: false, message: 'Vui lòng nhập tên và giá tiền sản phẩm!' });
+    if (!name || price === undefined) {
+      return res.status(400).json({ success: false, message: 'Vui lòng nhập tên và giá tiền sản phẩm!' });
+    }
+
+    let items = [];
+    if (type === 'account_keys' && itemsText) {
+      items = itemsText.split(/\r?\n/).map(i => i.trim()).filter(Boolean);
+    }
+
+    const finalStock = type === 'account_keys' ? items.length : Math.max(0, Number(stock) || 0);
+
+    const products = readJSON(PRODUCTS_FILE, []);
+    const newProduct = {
+      id: 'prod_' + Date.now(),
+      name: name.trim(),
+      price: Math.max(0, Number(price) || 0),
+      stock: finalStock,
+      type: type === 'account_keys' ? 'account_keys' : 'download',
+      items: items,
+      category: category ? category.trim() : 'Sản phẩm số',
+      description: description ? description.trim() : '',
+      image: image && image.trim() !== '' ? image.trim() : 'https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?w=500&auto=format&fit=crop&q=60',
+      downloadUrl: downloadUrl ? downloadUrl.trim() : '',
+      createdAt: new Date().toISOString()
+    };
+
+    products.unshift(newProduct);
+    writeJSON(PRODUCTS_FILE, products);
+
+    logAudit({
+      action: 'CREATE_PRODUCT',
+      actor: req.adminUser.username,
+      target: newProduct.id,
+      details: `Tạo sản phẩm [${newProduct.name}] với giá ${newProduct.price}đ (Kho: ${finalStock})`,
+      ip: getClientIP(req)
+    });
+
+    res.status(201).json({ success: true, message: 'Thêm sản phẩm thành công!', data: newProduct });
+  } finally {
+    productMutex.release();
   }
-
-  let items = [];
-  if (type === 'account_keys' && itemsText) {
-    items = itemsText.split(/\r?\n/).map(i => i.trim()).filter(Boolean);
-  }
-
-  const finalStock = type === 'account_keys' ? items.length : Math.max(0, Number(stock) || 0);
-
-  const products = readJSON(PRODUCTS_FILE, []);
-  const newProduct = {
-    id: 'prod_' + Date.now(),
-    name: name.trim(),
-    price: Math.max(0, Number(price) || 0),
-    stock: finalStock,
-    type: type === 'account_keys' ? 'account_keys' : 'download',
-    items: items,
-    category: category ? category.trim() : 'Sản phẩm số',
-    description: description ? description.trim() : '',
-    image: image && image.trim() !== '' ? image.trim() : 'https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?w=500&auto=format&fit=crop&q=60',
-    downloadUrl: downloadUrl ? downloadUrl.trim() : '',
-    createdAt: new Date().toISOString()
-  };
-
-  products.unshift(newProduct);
-  writeJSON(PRODUCTS_FILE, products);
-
-  logAudit({
-    action: 'CREATE_PRODUCT',
-    actor: req.adminUser.username,
-    target: newProduct.id,
-    details: `Tạo sản phẩm [${newProduct.name}] với giá ${newProduct.price}đ (Kho: ${finalStock})`,
-    ip: getClientIP(req)
-  });
-
-  res.status(201).json({ success: true, message: 'Thêm sản phẩm thành công!', data: newProduct });
 });
 
 // Nhập thêm kho Acc/Key hàng loạt (Dành riêng cho Shop Tài Khoản Game & Key VIP)
@@ -792,69 +843,79 @@ app.post('/api/admin/products/:id/restock', requireAdmin, (req, res) => {
 });
 
 // Xóa sản phẩm
-app.delete('/api/products/:id', requireAdmin, requireAdminPin, (req, res) => {
-  const { id } = req.params;
-  let products = readJSON(PRODUCTS_FILE, []);
-  const target = products.find(p => p.id === id);
+app.delete('/api/products/:id', requireAdmin, requireAdminPin, async (req, res) => {
+  await productMutex.acquire();
+  try {
+    const { id } = req.params;
+    let products = readJSON(PRODUCTS_FILE, []);
+    const target = products.find(p => p.id === id);
 
-  if (!target) {
-    return res.status(404).json({ success: false, message: 'Không tìm thấy sản phẩm cần xóa!' });
+    if (!target) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy sản phẩm cần xóa!' });
+    }
+
+    products = products.filter(p => p.id !== id);
+    writeJSON(PRODUCTS_FILE, products);
+
+    logAudit({
+      action: 'DELETE_PRODUCT',
+      actor: req.adminUser.username,
+      target: id,
+      details: `Xóa sản phẩm [${target.name}]`,
+      ip: getClientIP(req)
+    });
+
+    res.json({ success: true, message: 'Đã xóa sản phẩm thành công!' });
+  } finally {
+    productMutex.release();
   }
-
-  products = products.filter(p => p.id !== id);
-  writeJSON(PRODUCTS_FILE, products);
-
-  logAudit({
-    action: 'DELETE_PRODUCT',
-    actor: req.adminUser.username,
-    target: id,
-    details: `Xóa sản phẩm [${target.name}]`,
-    ip: getClientIP(req)
-  });
-
-  res.json({ success: true, message: 'Đã xóa sản phẩm thành công!' });
 });
 
 // Sửa sản phẩm
-app.put('/api/products/:id', requireAdmin, (req, res) => {
-  const { id } = req.params;
-  const cleanBody = sanitizeObject(req.body);
-  const { name, price, stock, category, description, image, downloadUrl, type, itemsText } = cleanBody;
+app.put('/api/products/:id', requireAdmin, async (req, res) => {
+  await productMutex.acquire();
+  try {
+    const { id } = req.params;
+    const cleanBody = sanitizeObject(req.body);
+    const { name, price, stock, category, description, image, downloadUrl, type, itemsText } = cleanBody;
 
-  let products = readJSON(PRODUCTS_FILE, []);
-  const pIndex = products.findIndex(p => p.id === id);
-  if (pIndex === -1) {
-    return res.status(404).json({ success: false, message: 'Không tìm thấy sản phẩm cần sửa!' });
+    let products = readJSON(PRODUCTS_FILE, []);
+    const pIndex = products.findIndex(p => p.id === id);
+    if (pIndex === -1) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy sản phẩm cần sửa!' });
+    }
+
+    if (name !== undefined) products[pIndex].name = name.trim();
+    if (price !== undefined) products[pIndex].price = Math.max(0, Number(price));
+    if (type !== undefined) products[pIndex].type = type;
+
+    if (itemsText !== undefined && products[pIndex].type === 'account_keys') {
+      products[pIndex].items = itemsText.split(/\r?\n/).map(i => i.trim()).filter(Boolean);
+      products[pIndex].stock = products[pIndex].items.length;
+    } else if (stock !== undefined) {
+      products[pIndex].stock = Math.max(0, Number(stock));
+    }
+
+    if (category !== undefined) products[pIndex].category = category.trim();
+    if (description !== undefined) products[pIndex].description = description.trim();
+    if (image !== undefined && image.trim() !== '') products[pIndex].image = image.trim();
+    if (downloadUrl !== undefined) products[pIndex].downloadUrl = downloadUrl.trim();
+    products[pIndex].updatedAt = new Date().toISOString();
+
+    writeJSON(PRODUCTS_FILE, products);
+
+    logAudit({
+      action: 'UPDATE_PRODUCT',
+      actor: req.adminUser.username,
+      target: id,
+      details: `Cập nhật thông tin sản phẩm [${products[pIndex].name}]`,
+      ip: getClientIP(req)
+    });
+
+    res.json({ success: true, message: 'Đã cập nhật sản phẩm thành công!', data: products[pIndex] });
+  } finally {
+    productMutex.release();
   }
-
-  if (name !== undefined) products[pIndex].name = name.trim();
-  if (price !== undefined) products[pIndex].price = Math.max(0, Number(price));
-  if (type !== undefined) products[pIndex].type = type;
-
-  if (itemsText !== undefined && products[pIndex].type === 'account_keys') {
-    products[pIndex].items = itemsText.split(/\r?\n/).map(i => i.trim()).filter(Boolean);
-    products[pIndex].stock = products[pIndex].items.length;
-  } else if (stock !== undefined) {
-    products[pIndex].stock = Math.max(0, Number(stock));
-  }
-
-  if (category !== undefined) products[pIndex].category = category.trim();
-  if (description !== undefined) products[pIndex].description = description.trim();
-  if (image !== undefined && image.trim() !== '') products[pIndex].image = image.trim();
-  if (downloadUrl !== undefined) products[pIndex].downloadUrl = downloadUrl.trim();
-  products[pIndex].updatedAt = new Date().toISOString();
-
-  writeJSON(PRODUCTS_FILE, products);
-
-  logAudit({
-    action: 'UPDATE_PRODUCT',
-    actor: req.adminUser.username,
-    target: id,
-    details: `Cập nhật thông tin sản phẩm [${products[pIndex].name}]`,
-    ip: getClientIP(req)
-  });
-
-  res.json({ success: true, message: 'Đã cập nhật sản phẩm thành công!', data: products[pIndex] });
 });
 
 // Upload ảnh sản phẩm (Hỗ trợ ImgBB Cloud vĩnh viễn chống mất ảnh trên Render)
@@ -2416,7 +2477,7 @@ app.use((req, res) => {
 });
 
 // ---------------- 23. KHỞI CHẠY SERVER ----------------
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`================================================================`);
   console.log(`  ShopHQK Enterprise Platform dang chay tai: http://localhost:${PORT}`);
   console.log(`  - Bao mat OWASP HTTP Headers, Anti-BruteForce, Rate-Limiting: ACTIVE`);
@@ -2425,4 +2486,11 @@ app.listen(PORT, () => {
   console.log(`  - He thong Tu dong Sao luu Dinh ky (Auto-Backup): ACTIVE`);
   console.log(`  - Kho Acc / Key Ban Hang Tu Dong: READY`);
   console.log(`================================================================`);
+
+  // Tự động kiểm tra và đồng bộ dữ liệu mới nhất từ GitHub khi boot
+  try {
+    await syncFromGitHubOnStartup();
+  } catch (e) {
+    console.warn('[BOOT SYNC] Lỗi khi kéo dữ liệu khởi động:', e.message);
+  }
 });

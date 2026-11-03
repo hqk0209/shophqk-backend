@@ -1,41 +1,5 @@
 [
   {
-    "id": "audit_1793698122506_225",
-    "action": "DELETE_PRODUCT",
-    "actor": "hqk",
-    "target": "prod_1793698113550",
-    "details": "Xóa sản phẩm [Sản phẩm test thứ 3]",
-    "ip": "171.253.123.190",
-    "timestamp": "2026-11-03T09:28:42.506Z"
-  },
-  {
-    "id": "audit_1793698113551_674",
-    "action": "CREATE_PRODUCT",
-    "actor": "hqk",
-    "target": "prod_1793698113550",
-    "details": "Tạo sản phẩm [Sản phẩm test thứ 3] với giá 10000đ (Kho: 10)",
-    "ip": "171.253.123.190",
-    "timestamp": "2026-11-03T09:28:33.551Z"
-  },
-  {
-    "id": "audit_1793697994197_729",
-    "action": "CREATE_PRODUCT",
-    "actor": "hqk",
-    "target": "prod_1793697994196",
-    "details": "Tạo sản phẩm [đvi súng] với giá 0đ (Kho: 99)",
-    "ip": "171.253.123.190",
-    "timestamp": "2026-11-03T09:26:34.197Z"
-  },
-  {
-    "id": "audit_1793697924312_936",
-    "action": "CREATE_PRODUCT",
-    "actor": "hqk",
-    "target": "prod_1793697924310",
-    "details": "Tạo sản phẩm [đvi súng] với giá 0đ (Kho: 99)",
-    "ip": "171.253.123.190",
-    "timestamp": "2026-11-03T09:25:24.312Z"
-  },
-  {
     "id": "audit_1793689643609_422",
     "action": "CREATE_BACKUP",
     "actor": "hqk",

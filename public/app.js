@@ -885,6 +885,8 @@ async function handleAdminAddProductSubmit(e) {
     if (data.success) {
       showToast(isEdit ? 'Đã cập nhật sản phẩm thành công!' : 'Đã đăng sản phẩm mới thành công!', 'success');
       cancelEditingProduct();
+      currentCategory = 'all';
+      renderCategoryPills();
       loadProducts();
     } else {
       showToast(data.message || 'Lỗi khi xử lý sản phẩm', 'error');
