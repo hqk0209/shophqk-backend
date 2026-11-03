@@ -1407,6 +1407,28 @@ app.post('/api/admin/simulate-webhook', requireAdmin, async (req, res) => {
   res.json(result);
 });
 
+// Giả lập Callback Gạch Thẻ Cào (GachTheFast)
+app.post('/api/admin/simulate-card-callback', requireAdmin, async (req, res) => {
+  const { requestId, status } = req.body;
+  if (!requestId) {
+    return res.status(400).json({ success: false, message: 'Thiếu mã yêu cầu thẻ (requestId)!' });
+  }
+
+  let statusCode = 3;
+  if (status === 'SUCCESS' || status === 1) statusCode = 1;
+  else if (status === 'WRONG_AMOUNT' || status === 2) statusCode = 2;
+  else if (status === 'FAILED' || status === 3) statusCode = 3;
+
+  const callbackData = {
+    status: statusCode,
+    request_id: requestId,
+    message: `Admin giả lập kết quả thẻ: ${status}`
+  };
+
+  const result = await processCardCallback(callbackData, getClientIP(req));
+  res.json({ success: result.success !== false, message: result.message });
+});
+
 // ---------------- 17. GẠCH THẺ CÀO TỰ ĐỘNG GACHTHEFAST.COM ----------------
 async function sendCardToGachTheFast({ telco, code, serial, amount, requestId, partnerId, partnerKey }) {
   const command = 'charging';

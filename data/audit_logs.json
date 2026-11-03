@@ -1,1 +1,20 @@
-[]
+[
+  {
+    "id": "audit_1793689643609_422",
+    "action": "CREATE_BACKUP",
+    "actor": "hqk",
+    "target": "",
+    "details": "Tạo bản sao lưu thủ công: backup_2026-11-03T07-07-23_MANUAL_ADMIN.json",
+    "ip": "::1",
+    "timestamp": "2026-11-03T07:07:23.609Z"
+  },
+  {
+    "id": "audit_1793689643479_949",
+    "action": "LOGIN_SUCCESS",
+    "actor": "hqk",
+    "target": "",
+    "details": "Đăng nhập thành công (admin)",
+    "ip": "::1",
+    "timestamp": "2026-11-03T07:07:23.479Z"
+  }
+]

@@ -1,7 +1,17 @@
-// Tự động định tuyến API: Chạy trực tiếp trên cùng domain Render / Localhost
-const API_BASE = (window.location.hostname.includes('netlify.app'))
-  ? 'https://shophqk.onrender.com'
-  : '';
+// Đảm bảo lucide không gây lỗi nếu CDN bị chặn hoặc tải chậm
+if (typeof window !== 'undefined' && !window.lucide) {
+  window.lucide = { createIcons: function() {} };
+}
+
+// Tự động định tuyến API: Hỗ trợ Netlify, Render, Localhost và file://
+let API_BASE = '';
+if (typeof window !== 'undefined') {
+  if (window.location.protocol === 'file:') {
+    API_BASE = 'http://localhost:3000';
+  } else if (window.location.hostname.includes('netlify.app')) {
+    API_BASE = 'https://shophqk.onrender.com';
+  }
+}
 
 const _rawFetch = window.fetch;
 window.fetch = function(url, options = {}) {
@@ -676,43 +686,6 @@ async function handleAdminAddProductSubmit(e) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name, price, stock, category, image, description, downloadUrl, type, itemsText
-      })
-    });
-
-    const data = await res.json();
-    if (data.success) {
-      showToast(isEdit ? 'Đã cập nhật sản phẩm thành công!' : 'Đã đăng sản phẩm mới thành công!', 'success');
-      cancelEditingProduct();
-      loadProducts();
-    } else {
-      showToast(data.message || 'Lỗi khi xử lý sản phẩm', 'error');
-    }
-  } catch (err) {
-    showToast('Lỗi kết nối máy chủ', 'error');
-  }
-}
-      }
-    } catch (err) {
-      console.warn('Upload image API error, fallback to base64/url');
-      image = currentUploadedBase64;
-    }
-  }
-
-  if (!image) {
-    image = 'https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?w=500&auto=format&fit=crop&q=60';
-  }
-
-  try {
-    const isEdit = !!editingProductId;
-    const endpoint = isEdit ? `/api/products/${editingProductId}` : '/api/products';
-    const method = isEdit ? 'PUT' : 'POST';
-
-    const res = await fetch(endpoint, {
-      method: method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        adminUsername: currentUser ? currentUser.username : 'hqk',
-        name, price, stock, category, image, description, downloadUrl
       })
     });
 
