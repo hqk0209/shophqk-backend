@@ -1,18 +1,5 @@
 [
   {
-    "id": "prod_1793698113550",
-    "name": "Sản phẩm test thứ 3",
-    "price": 10000,
-    "stock": 10,
-    "type": "download",
-    "items": [],
-    "category": "FreeFire Thường",
-    "description": "Test mô tả 3",
-    "image": "https://images.unsplash.com/photo-1542751371-adc38448a05e",
-    "downloadUrl": "https://google.com",
-    "createdAt": "2026-11-03T09:28:33.550Z"
-  },
-  {
     "id": "prod_1793697994196",
     "name": "đvi súng",
     "price": 0,
