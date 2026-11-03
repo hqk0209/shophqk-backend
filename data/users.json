@@ -64,5 +64,15 @@
     "role": "user",
     "isBanned": false,
     "createdAt": "2026-11-03T12:55:37.919Z"
+  },
+  {
+    "id": "user_1793711353106",
+    "username": "diggory940",
+    "password": "$2a$10$BmajkAVcsEoOV5Zuhw7kp.7de87vXWSIH89AA1W4Ha/2eu8GhYdsO",
+    "fullname": "Ghhqhwh",
+    "balance": 0,
+    "role": "user",
+    "isBanned": false,
+    "createdAt": "2026-11-03T13:09:13.106Z"
   }
 ]
