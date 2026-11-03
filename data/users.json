@@ -74,5 +74,15 @@
     "role": "user",
     "isBanned": false,
     "createdAt": "2026-11-03T13:09:13.106Z"
+  },
+  {
+    "id": "user_1793718730412",
+    "username": "vinh",
+    "password": "$2a$10$sYK7P3k7NLqbwnjrd6LrtOAOzgISefyn0TG21R3oJz8aWuvWCFsWG",
+    "fullname": "Vinh",
+    "balance": 0,
+    "role": "user",
+    "isBanned": false,
+    "createdAt": "2026-11-03T15:12:10.412Z"
   }
 ]
