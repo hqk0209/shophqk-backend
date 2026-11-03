@@ -544,6 +544,29 @@ function clearSelectedImage(e) {
 }
 
 // ---------------- THÊM / SỬA / XÓA SẢN PHẨM ----------------
+function toggleProductTypeFields() {
+  const pType = document.getElementById('admProdType')?.value;
+  const grp = document.getElementById('admAccountKeysGroup');
+  if (pType === 'account_keys') {
+    if (grp) grp.classList.remove('hidden');
+    updateKeyCountBadge();
+  } else {
+    if (grp) grp.classList.add('hidden');
+  }
+}
+
+function updateKeyCountBadge() {
+  const text = document.getElementById('admProdItemsText')?.value || '';
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const badge = document.getElementById('admKeyCountBadge');
+  const stockInp = document.getElementById('admProdStock');
+
+  if (badge) badge.innerText = `${lines.length} acc/key`;
+  if (stockInp && document.getElementById('admProdType')?.value === 'account_keys') {
+    stockInp.value = lines.length;
+  }
+}
+
 function openEditProductModal(id) {
   const prod = allProducts.find(p => p.id === id);
   if (!prod) return;
@@ -558,6 +581,12 @@ function openEditProductModal(id) {
   document.getElementById('admProdImage').value = prod.image || '';
   const dlInput = document.getElementById('admProdDownloadUrl');
   if (dlInput) dlInput.value = prod.downloadUrl || '';
+
+  const pTypeSelect = document.getElementById('admProdType');
+  if (pTypeSelect) {
+    pTypeSelect.value = prod.type || 'download';
+    toggleProductTypeFields();
+  }
 
   // Hiển thị ảnh hiện tại
   const previewCont = document.getElementById('imagePreviewContainer');
@@ -585,6 +614,13 @@ function cancelEditingProduct() {
   document.getElementById('adminAddProductForm').reset();
   const dlInput = document.getElementById('admProdDownloadUrl');
   if (dlInput) dlInput.value = '';
+  const pTypeSelect = document.getElementById('admProdType');
+  if (pTypeSelect) {
+    pTypeSelect.value = 'download';
+    toggleProductTypeFields();
+  }
+  const itemsText = document.getElementById('admProdItemsText');
+  if (itemsText) itemsText.value = '';
   clearSelectedImage();
   document.getElementById('admProdSubmitBtn').innerHTML = '<i data-lucide="check" class="w-4 h-4"></i> Đăng Sản Phẩm';
   document.getElementById('admCancelEditBtn').classList.add('hidden');
@@ -601,6 +637,8 @@ async function handleAdminAddProductSubmit(e) {
   let image = document.getElementById('admProdImage').value.trim();
   const description = document.getElementById('admProdDesc').value.trim();
   const downloadUrl = (document.getElementById('admProdDownloadUrl') ? document.getElementById('admProdDownloadUrl').value.trim() : '');
+  const type = document.getElementById('admProdType')?.value || 'download';
+  const itemsText = document.getElementById('admProdItemsText')?.value || '';
 
   // 1. Nếu có ảnh kéo thả / chọn từ máy tính, tiến hành upload ảnh lên server
   if (currentUploadedBase64) {
@@ -610,7 +648,6 @@ async function handleAdminAddProductSubmit(e) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          adminUsername: currentUser ? currentUser.username : 'hqk',
           imageBase64: currentUploadedBase64,
           filename: currentSelectedFile ? currentSelectedFile.name : 'product.png'
         })
@@ -618,6 +655,42 @@ async function handleAdminAddProductSubmit(e) {
       const upData = await upRes.json();
       if (upData.success && upData.imageUrl) {
         image = upData.imageUrl;
+      }
+    } catch (err) {
+      console.warn('Upload image API error, fallback to base64/url');
+      image = currentUploadedBase64;
+    }
+  }
+
+  if (!image) {
+    image = 'https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?w=500&auto=format&fit=crop&q=60';
+  }
+
+  try {
+    const isEdit = !!editingProductId;
+    const endpoint = isEdit ? `/api/products/${editingProductId}` : '/api/products';
+    const method = isEdit ? 'PUT' : 'POST';
+
+    const res = await fetch(endpoint, {
+      method: method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name, price, stock, category, image, description, downloadUrl, type, itemsText
+      })
+    });
+
+    const data = await res.json();
+    if (data.success) {
+      showToast(isEdit ? 'Đã cập nhật sản phẩm thành công!' : 'Đã đăng sản phẩm mới thành công!', 'success');
+      cancelEditingProduct();
+      loadProducts();
+    } else {
+      showToast(data.message || 'Lỗi khi xử lý sản phẩm', 'error');
+    }
+  } catch (err) {
+    showToast('Lỗi kết nối máy chủ', 'error');
+  }
+}
       }
     } catch (err) {
       console.warn('Upload image API error, fallback to base64/url');
@@ -879,6 +952,14 @@ async function handleAdminSaveSettings(e) {
   }
 }
 
+let currentDeliveredKeys = '';
+function copyDeliveredKeys() {
+  if (currentDeliveredKeys) {
+    navigator.clipboard.writeText(currentDeliveredKeys);
+    showToast('Đã sao chép danh sách Acc / Key thành công!', 'success');
+  }
+}
+
 // ---------------- MUA HÀNG (BUY PRODUCT) ----------------
 async function handleBuyProduct(productId) {
   if (!currentUser) {
@@ -905,7 +986,6 @@ async function handleBuyProduct(productId) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        username: currentUser.username,
         productId: product.id,
         quantity: 1
       })
@@ -918,15 +998,38 @@ async function handleBuyProduct(productId) {
       updateAuthUI();
       loadProducts();
 
-      // Nếu sản phẩm có Link Tải, hiển thị ngay hộp thoại nhận link tải
+      const pNameElem = document.getElementById('buySuccessProductName');
+      if (pNameElem) pNameElem.innerText = `Sản phẩm: ${data.productName || product.name}`;
+
+      const keysBox = document.getElementById('buySuccessKeysBox');
+      const dlBox = document.getElementById('buySuccessDownloadBox');
+      let hasDeliveryModal = false;
+
+      // 1. Nếu nhận được Acc / Key bàn giao tự động
+      if (Array.isArray(data.deliveredItems) && data.deliveredItems.length > 0) {
+        currentDeliveredKeys = data.deliveredItems.join('\n');
+        const keysText = document.getElementById('buySuccessKeysText');
+        if (keysText) keysText.innerText = currentDeliveredKeys;
+        if (keysBox) keysBox.classList.remove('hidden');
+        hasDeliveryModal = true;
+      } else {
+        if (keysBox) keysBox.classList.add('hidden');
+      }
+
+      // 2. Nếu có Link Tải
       if (data.downloadUrl && data.downloadUrl.trim() !== '') {
         currentDownloadLink = data.downloadUrl.trim();
-        const pNameElem = document.getElementById('buySuccessProductName');
-        if (pNameElem) pNameElem.innerText = `Sản phẩm: ${data.productName || product.name}`;
         const pLinkElem = document.getElementById('buySuccessDownloadLinkText');
         if (pLinkElem) pLinkElem.innerText = currentDownloadLink;
         const pBtnElem = document.getElementById('buySuccessDownloadBtn');
         if (pBtnElem) pBtnElem.href = currentDownloadLink;
+        if (dlBox) dlBox.classList.remove('hidden');
+        hasDeliveryModal = true;
+      } else {
+        if (dlBox) dlBox.classList.add('hidden');
+      }
+
+      if (hasDeliveryModal) {
         openModal('buySuccessModal');
       } else {
         showToast('Mua hàng thành công! Kiểm tra lịch sử giao dịch.', 'success');
@@ -1143,7 +1246,10 @@ const adminTabConfig = {
   deposits: { btnId: 'admTabDeposits', secId: 'admSectionDeposits' },
   orders: { btnId: 'admTabOrders', secId: 'admSectionOrders' },
   settings: { btnId: 'admTabSettings', secId: 'admSectionSettings' },
-  cards: { btnId: 'admTabCards', secId: 'admSectionCards' }
+  cards: { btnId: 'admTabCards', secId: 'admSectionCards' },
+  audit: { btnId: 'admTabAudit', secId: 'admSectionAudit' },
+  backups: { btnId: 'admTabBackups', secId: 'admSectionBackups' },
+  webhookLogs: { btnId: 'admTabWebhookLogs', secId: 'admSectionWebhookLogs' }
 };
 
 function switchAdminTab(rawTab) {
@@ -1151,7 +1257,7 @@ function switchAdminTab(rawTab) {
   if (tab === 'shop_info') tab = 'shopInfo';
   if (!adminTabConfig[tab]) tab = 'product';
 
-  const tabKeys = ['product', 'categories', 'shopInfo', 'users', 'deposits', 'orders', 'settings', 'cards'];
+  const tabKeys = ['product', 'categories', 'shopInfo', 'users', 'deposits', 'orders', 'settings', 'cards', 'audit', 'backups', 'webhookLogs'];
 
   tabKeys.forEach(key => {
     const cfg = adminTabConfig[key];
@@ -1192,6 +1298,12 @@ function switchAdminTab(rawTab) {
     } else if (tab === 'cards') {
       loadAdminCards();
       loadAdminFullSettings();
+    } else if (tab === 'audit') {
+      loadAdminAuditLogs();
+    } else if (tab === 'backups') {
+      loadAdminBackups();
+    } else if (tab === 'webhookLogs') {
+      loadAdminWebhookLogs();
     }
   } catch (err) {
     console.error('Lỗi khi tải tab admin:', err);
@@ -1222,8 +1334,9 @@ async function loadAdminUsers() {
 
       return `
         <tr class="hover:bg-slate-800/40 transition">
-          <td class="p-2.5 font-mono font-bold text-indigo-300 flex items-center gap-1">
+          <td class="p-2.5 font-mono font-bold text-indigo-300 flex items-center gap-1 flex-wrap">
             ${isAdmin ? '👑' : '👤'} ${u.username}
+            ${u.isBanned ? '<span class="ml-1 text-[10px] bg-rose-500/20 text-rose-400 border border-rose-500/30 px-1 py-0.5 rounded font-sans">BỊ KHÓA</span>' : ''}
           </td>
           <td class="p-2.5 text-slate-300">${u.fullname || '-'}</td>
           <td class="p-2.5 font-extrabold text-emerald-400">
@@ -1239,6 +1352,9 @@ async function loadAdminUsers() {
               💰 Quản lý tiền
             </button>
             ${!isSelf ? `
+              <button onclick="adminToggleBan('${u.username}', ${!u.isBanned})" title="${u.isBanned ? 'Mở khóa tài khoản' : 'Khóa tài khoản'}" class="px-2 py-1 ${u.isBanned ? 'bg-emerald-600 hover:bg-emerald-500' : 'bg-amber-600 hover:bg-amber-500'} text-white rounded-lg text-[11px] font-bold transition">
+                ${u.isBanned ? '🔓 Mở' : '🔒 Khóa'}
+              </button>
               <button onclick="adminDeleteUser('${u.username}')" title="Xóa tài khoản" class="px-2 py-1 bg-rose-600/80 hover:bg-rose-600 text-white rounded-lg text-[11px] font-bold transition">
                 🗑️
               </button>
@@ -2385,6 +2501,17 @@ async function openHistoryModal() {
             <div>
               <p class="font-bold text-white">${isDeposit ? `Nạp tiền ${tx.code ? `(${tx.code})` : ''}` : `Mua hàng: ${tx.productName || 'Sản phẩm'}`}</p>
               <p class="text-[10px] text-slate-500">${tx.memo || time}</p>
+              ${tx.deliveredItems && Array.isArray(tx.deliveredItems) && tx.deliveredItems.length > 0 ? `
+                <div class="mt-1.5 p-2 bg-slate-900 border border-cyan-500/40 rounded-lg text-[11px] font-mono text-cyan-300">
+                  <div class="text-[10px] text-slate-400 font-sans font-bold flex items-center justify-between mb-1">
+                    <span>🔑 Acc / Key đã cấp:</span>
+                    <button type="button" onclick="navigator.clipboard.writeText('${tx.deliveredItems.join('\\n').replace(/'/g, "\\'")}'); showToast('Đã chép acc/key!', 'success')" class="text-[9px] bg-slate-800 hover:bg-slate-700 px-1.5 py-0.5 rounded text-slate-200">
+                      Chép
+                    </button>
+                  </div>
+                  <div class="select-all whitespace-pre-wrap">${tx.deliveredItems.join('\n')}</div>
+                </div>
+              ` : ''}
               ${tx.downloadUrl ? `
                 <a href="${tx.downloadUrl}" target="_blank" class="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded bg-cyan-600/80 hover:bg-cyan-500 text-white text-[10px] font-bold shadow-sm transition">
                   <i data-lucide="download" class="w-2.5 h-2.5"></i> Mở link tải về
@@ -2407,5 +2534,223 @@ async function openHistoryModal() {
     lucide.createIcons();
   } catch (err) {
     list.innerHTML = `<div class="text-center py-6 text-rose-400 text-xs">Lỗi tải lịch sử</div>`;
+  }
+}
+
+// ---------------- 1. NHẬT KÝ BẢO MẬT (AUDIT LOGS) ----------------
+async function loadAdminAuditLogs() {
+  const table = document.getElementById('adminAuditTable');
+  if (!table) return;
+  table.innerHTML = `<tr><td colspan="6" class="p-3 text-center text-slate-500">Đang tải nhật ký bảo mật...</td></tr>`;
+
+  try {
+    const res = await fetch('/api/admin/audit-logs');
+    const data = await res.json();
+    if (!data.success || !Array.isArray(data.data) || data.data.length === 0) {
+      table.innerHTML = `<tr><td colspan="6" class="p-3 text-center text-slate-500">Chưa có nhật ký bảo mật nào được ghi nhận.</td></tr>`;
+      return;
+    }
+
+    const actionColors = {
+      LOGIN_SUCCESS: 'bg-emerald-500/20 text-emerald-300',
+      LOGIN_FAILED: 'bg-rose-500/20 text-rose-300',
+      PURCHASE: 'bg-indigo-500/20 text-indigo-300',
+      AUTO_DEPOSIT: 'bg-cyan-500/20 text-cyan-300',
+      ADMIN_DEPOSIT: 'bg-emerald-500/20 text-emerald-300',
+      ADMIN_DEDUCT: 'bg-amber-500/20 text-amber-300',
+      ADMIN_RESET: 'bg-rose-500/20 text-rose-300',
+      BAN_USER: 'bg-rose-500/20 text-rose-300',
+      UNBAN_USER: 'bg-emerald-500/20 text-emerald-300',
+      CREATE_BACKUP: 'bg-cyan-500/20 text-cyan-300',
+      RESTORE_BACKUP: 'bg-rose-500/20 text-rose-300'
+    };
+
+    table.innerHTML = data.data.map(log => {
+      const time = new Date(log.timestamp).toLocaleString('vi-VN');
+      const badgeClass = actionColors[log.action] || 'bg-slate-800 text-slate-300';
+
+      return `
+        <tr class="hover:bg-slate-800/40 transition">
+          <td class="p-2 text-[11px] text-slate-400 font-mono whitespace-nowrap">${time}</td>
+          <td class="p-2">
+            <span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${badgeClass}">${log.action}</span>
+          </td>
+          <td class="p-2 font-bold text-white text-[11px] font-mono">${log.actor || '-'}</td>
+          <td class="p-2 text-indigo-300 text-[11px] font-mono">${log.target || '-'}</td>
+          <td class="p-2 text-slate-400 text-[10px] font-mono">${log.ip || '-'}</td>
+          <td class="p-2 text-slate-300 text-xs">${log.details || '-'}</td>
+        </tr>
+      `;
+    }).join('');
+  } catch (err) {
+    table.innerHTML = `<tr><td colspan="6" class="p-3 text-center text-rose-400">Lỗi khi tải nhật ký bảo mật</td></tr>`;
+  }
+}
+
+// ---------------- 2. SAO LƯU SERVER (BACKUP & RESTORE) ----------------
+async function loadAdminBackups() {
+  const table = document.getElementById('adminBackupsTable');
+  if (!table) return;
+  table.innerHTML = `<tr><td colspan="4" class="p-3 text-center text-slate-500">Đang tải danh sách bản sao lưu...</td></tr>`;
+
+  try {
+    const res = await fetch('/api/admin/backups');
+    const data = await res.json();
+    if (!data.success || !Array.isArray(data.data) || data.data.length === 0) {
+      table.innerHTML = `<tr><td colspan="4" class="p-3 text-center text-slate-500">Chưa có bản sao lưu nào. Hãy bấm "Tạo Bản Sao Lưu Ngay"!</td></tr>`;
+      return;
+    }
+
+    table.innerHTML = data.data.map(b => {
+      const time = new Date(b.createdAt).toLocaleString('vi-VN');
+      return `
+        <tr class="hover:bg-slate-800/40 transition">
+          <td class="p-2.5 font-mono text-cyan-300 font-bold text-xs flex items-center gap-1.5">
+            <i data-lucide="file-json" class="w-4 h-4 text-amber-400 shrink-0"></i>
+            <span>${b.fileName}</span>
+          </td>
+          <td class="p-2.5 text-slate-400 text-xs">${b.sizeKB} KB</td>
+          <td class="p-2.5 text-slate-400 text-[11px] font-mono whitespace-nowrap">${time}</td>
+          <td class="p-2.5 text-right space-x-1.5 whitespace-nowrap">
+            <a href="/api/admin/backups/download/${encodeURIComponent(b.fileName)}" target="_blank" class="inline-flex items-center gap-1 px-2.5 py-1 bg-cyan-600/80 hover:bg-cyan-500 text-white rounded-lg text-[11px] font-bold shadow-sm transition">
+              <i data-lucide="download" class="w-3 h-3"></i> Tải về máy
+            </a>
+            <button type="button" onclick="triggerRestoreBackup('${b.fileName}')" class="px-2.5 py-1 bg-rose-600/80 hover:bg-rose-600 text-white rounded-lg text-[11px] font-bold transition">
+              <i data-lucide="rotate-ccw" class="w-3 h-3 inline"></i> Khôi phục
+            </button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+    lucide.createIcons();
+  } catch (err) {
+    table.innerHTML = `<tr><td colspan="4" class="p-3 text-center text-rose-400">Lỗi khi tải danh sách sao lưu</td></tr>`;
+  }
+}
+
+async function triggerCreateBackup() {
+  showToast('Đang tạo bản sao lưu toàn bộ dữ liệu server...', 'info');
+  try {
+    const res = await fetch('/api/admin/backups/create', { method: 'POST' });
+    const data = await res.json();
+    if (data.success) {
+      showToast(data.message, 'success');
+      loadAdminBackups();
+    } else {
+      showToast(data.message || 'Lỗi khi tạo sao lưu', 'error');
+    }
+  } catch (err) {
+    showToast('Lỗi kết nối máy chủ: ' + err.message, 'error');
+  }
+}
+
+async function triggerRestoreBackup(fileName) {
+  const ok = confirm(`CẢNH BÁO NGUY HIỂM:\nBạn có chắc chắn muốn khôi phục toàn bộ hệ thống từ file [${fileName}]?\nDữ liệu hiện tại sẽ được ghi đè về trạng thái lúc sao lưu!`);
+  if (!ok) return;
+
+  let adminPin = '';
+  if (currentSettings.hasSecurityPin) {
+    adminPin = prompt('Nhập Mã PIN Bảo Vệ Quản Trị Cấp 2:');
+    if (adminPin === null) return;
+  }
+
+  showToast('Đang khôi phục dữ liệu từ bản sao lưu...', 'info');
+  try {
+    const res = await fetch('/api/admin/backups/restore', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-admin-pin': adminPin
+      },
+      body: JSON.stringify({ fileName, adminPin })
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast(data.message, 'success');
+      loadProducts();
+      loadShopSettings();
+      loadAdminUsers();
+      loadAdminBackups();
+    } else {
+      showToast(data.message || 'Lỗi khôi phục sao lưu', 'error');
+    }
+  } catch (err) {
+    showToast('Lỗi kết nối: ' + err.message, 'error');
+  }
+}
+
+// ---------------- 3. LOGS WEBHOOK NHẬN TIỀN (WEBHOOK INSPECTOR) ----------------
+async function loadAdminWebhookLogs() {
+  const table = document.getElementById('adminWebhookTable');
+  if (!table) return;
+  table.innerHTML = `<tr><td colspan="6" class="p-3 text-center text-slate-500">Đang tải lịch sử webhook...</td></tr>`;
+
+  try {
+    const res = await fetch('/api/admin/webhook-logs');
+    const data = await res.json();
+    if (!data.success || !Array.isArray(data.data) || data.data.length === 0) {
+      table.innerHTML = `<tr><td colspan="6" class="p-3 text-center text-slate-500">Chưa có request webhook nào đến.</td></tr>`;
+      return;
+    }
+
+    table.innerHTML = data.data.map(w => {
+      const time = new Date(w.timestamp).toLocaleString('vi-VN');
+      const isSuccess = w.result === 'SUCCESS';
+
+      return `
+        <tr class="hover:bg-slate-800/40 transition">
+          <td class="p-2 text-[11px] text-slate-400 font-mono whitespace-nowrap">${time}</td>
+          <td class="p-2 font-bold text-amber-400 text-xs font-mono">${w.gateway}</td>
+          <td class="p-2 text-right font-extrabold text-emerald-400 text-xs whitespace-nowrap">${Number(w.amount || 0).toLocaleString('vi-VN')} đ</td>
+          <td class="p-2 text-slate-300 text-xs max-w-xs truncate" title="${w.content}">${w.content || '-'}</td>
+          <td class="p-2">
+            <span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${isSuccess ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'}">
+              ${w.result}
+            </span>
+          </td>
+          <td class="p-2 text-slate-400 text-[10px] font-mono">${w.ip}</td>
+        </tr>
+      `;
+    }).join('');
+  } catch (err) {
+    table.innerHTML = `<tr><td colspan="6" class="p-3 text-center text-rose-400">Lỗi khi tải logs webhook</td></tr>`;
+  }
+}
+
+// Khóa / Mở khóa tài khoản (Admin)
+async function adminToggleBan(username, isBanned) {
+  let reason = '';
+  if (isBanned) {
+    reason = prompt(`Xác nhận KHÓA tài khoản [${username}]?\nNhập lý do khóa:`, 'Vi phạm quy định của Shop');
+    if (reason === null) return;
+  } else {
+    if (!confirm(`Xác nhận MỞ KHÓA tài khoản [${username}]?`)) return;
+  }
+
+  let adminPin = '';
+  if (currentSettings.hasSecurityPin) {
+    adminPin = prompt('Nhập Mã PIN Bảo Vệ Quản Trị Cấp 2:');
+    if (adminPin === null) return;
+  }
+
+  try {
+    const res = await fetch('/api/admin/toggle-ban', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-admin-pin': adminPin
+      },
+      body: JSON.stringify({ targetUsername: username, isBanned, reason, adminPin })
+    });
+
+    const data = await res.json();
+    if (data.success) {
+      showToast(data.message, 'success');
+      loadAdminUsers();
+    } else {
+      showToast(data.message || 'Lỗi khi cập nhật trạng thái', 'error');
+    }
+  } catch (err) {
+    showToast('Lỗi kết nối máy chủ', 'error');
   }
 }
