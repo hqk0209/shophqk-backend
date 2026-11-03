@@ -1,5 +1,23 @@
 [
   {
+    "id": "audit_1793693144519_789",
+    "action": "DELETE_PRODUCT",
+    "actor": "hqk",
+    "target": "prod_1792903359070",
+    "details": "Xóa sản phẩm [Định vị trang phục cus]",
+    "ip": "171.253.123.190",
+    "timestamp": "2026-11-03T08:05:44.519Z"
+  },
+  {
+    "id": "audit_1793693141851_843",
+    "action": "DELETE_PRODUCT",
+    "actor": "hqk",
+    "target": "prod_1792903287272",
+    "details": "Xóa sản phẩm [Định vị súng và trang phục]",
+    "ip": "171.253.123.190",
+    "timestamp": "2026-11-03T08:05:41.851Z"
+  },
+  {
     "id": "audit_1793689643609_422",
     "action": "CREATE_BACKUP",
     "actor": "hqk",
