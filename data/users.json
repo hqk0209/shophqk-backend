@@ -84,5 +84,15 @@
     "role": "user",
     "isBanned": false,
     "createdAt": "2026-11-03T15:12:10.412Z"
+  },
+  {
+    "id": "user_1793718990316",
+    "username": "namok",
+    "password": "$2a$10$EFtPyaygwdiNzQebCN0nsu37iC/Az3smkSqdgqRszoDpV2zpqJ9j.",
+    "fullname": "Thân bảo nam",
+    "balance": 0,
+    "role": "user",
+    "isBanned": false,
+    "createdAt": "2026-11-03T15:16:30.316Z"
   }
 ]
