@@ -1,5 +1,41 @@
 [
   {
+    "id": "audit_1793691829632_696",
+    "action": "DELETE_PRODUCT",
+    "actor": "hqk",
+    "target": "prod_1792903287272",
+    "details": "Xóa sản phẩm [Định vị súng và trang phục]",
+    "ip": "171.253.123.190",
+    "timestamp": "2026-11-03T07:43:49.632Z"
+  },
+  {
+    "id": "audit_1793691827092_869",
+    "action": "DELETE_PRODUCT",
+    "actor": "hqk",
+    "target": "prod_1792903359070",
+    "details": "Xóa sản phẩm [Định vị trang phục cus]",
+    "ip": "171.253.123.190",
+    "timestamp": "2026-11-03T07:43:47.092Z"
+  },
+  {
+    "id": "audit_1793691824472_825",
+    "action": "LOGIN_SUCCESS",
+    "actor": "hqk",
+    "target": "",
+    "details": "Đăng nhập thành công (admin)",
+    "ip": "171.253.123.190",
+    "timestamp": "2026-11-03T07:43:44.472Z"
+  },
+  {
+    "id": "audit_1793691823877_562",
+    "action": "LOGIN_SUCCESS",
+    "actor": "hqk",
+    "target": "",
+    "details": "Đăng nhập thành công (admin)",
+    "ip": "171.253.123.190",
+    "timestamp": "2026-11-03T07:43:43.877Z"
+  },
+  {
     "id": "audit_1793689643609_422",
     "action": "CREATE_BACKUP",
     "actor": "hqk",
