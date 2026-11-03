@@ -1,5 +1,14 @@
 [
   {
+    "id": "audit_1793693580969_513",
+    "action": "LOGIN_SUCCESS",
+    "actor": "hqk",
+    "target": "",
+    "details": "Đăng nhập thành công (admin)",
+    "ip": "171.253.123.190",
+    "timestamp": "2026-11-03T08:13:00.969Z"
+  },
+  {
     "id": "audit_1793693532206_867",
     "action": "CREATE_PRODUCT",
     "actor": "hqk",
