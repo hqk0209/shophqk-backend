@@ -40,7 +40,7 @@
     "username": "hqk1",
     "password": "$2a$10$qD.w0D2UADTJZX0c/v9n5O8WCWnoxQOxBZQen03e8TV4edpFY1CoG",
     "fullname": "khánh",
-    "balance": 0,
+    "balance": 1000000,
     "role": "user",
     "isBanned": false,
     "createdAt": "2026-11-03T12:24:27.313Z"
