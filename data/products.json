@@ -1,5 +1,18 @@
 [
   {
+    "id": "prod_1793693532205",
+    "name": "Test Product 123",
+    "price": 50000,
+    "stock": 10,
+    "type": "download",
+    "items": [],
+    "category": "Tài khoản",
+    "description": "Mô tả test",
+    "image": "https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?w=500&auto=format&fit=crop&q=60",
+    "downloadUrl": "https://google.com",
+    "createdAt": "2026-11-03T08:12:12.205Z"
+  },
+  {
     "id": "prod_hqk_1",
     "name": "Tài Khoản Youtube Premium 1 Năm",
     "price": 100000,
