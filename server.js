@@ -45,47 +45,6 @@ app.use((req, res, next) => {
 });
 
 app.use(cors());
-
-// ---------------- 2.1 TỰ ĐỘNG NÉN DỮ LIỆU GZIP (GIẢM 85% DUNG LƯỢNG & TĂNG TỐC 5X) ----------------
-app.use((req, res, next) => {
-  const accept = req.headers['accept-encoding'] || '';
-  if (!accept.includes('gzip')) return next();
-
-  const oldSend = res.send;
-  res.send = function (body) {
-    if (res.headersSent) return oldSend.call(this, body);
-
-    const ct = res.getHeader('Content-Type') || '';
-    if (!/json|text|javascript|css|xml|html/i.test(ct)) {
-      return oldSend.call(this, body);
-    }
-
-    let buf;
-    if (Buffer.isBuffer(body)) buf = body;
-    else if (typeof body === 'string') buf = Buffer.from(body);
-    else if (typeof body === 'object') {
-      try {
-        res.setHeader('Content-Type', 'application/json; charset=utf-8');
-        buf = Buffer.from(JSON.stringify(body));
-      } catch (e) {
-        return oldSend.call(this, body);
-      }
-    } else return oldSend.call(this, body);
-
-    if (buf.length < 512) {
-      return oldSend.call(this, buf);
-    }
-
-    zlib.gzip(buf, (err, gz) => {
-      if (err) return oldSend.call(this, buf);
-      res.setHeader('Content-Encoding', 'gzip');
-      res.removeHeader('Content-Length');
-      oldSend.call(this, gz);
-    });
-  };
-  next();
-});
-
 app.use(express.json({ limit: '25mb' }));
 app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 
@@ -225,45 +184,6 @@ function triggerGitHubSync(filePath) {
       }
     }, 15000); // Gom thay đổi trong 15s để tránh spam commit
   } catch (e) {}
-}
-
-// ---------------- 3.2 TỰ ĐỘNG KÉO DỮ LIỆU MỚI NHẤT TỪ GITHUB KHI KHỞI ĐỘNG ----------------
-async function syncFromGitHubOnStartup() {
-  const settings = readJSON(SETTINGS_FILE, {});
-  const token = process.env.GITHUB_TOKEN || settings.githubToken;
-  const repo = process.env.GITHUB_REPO || settings.githubRepo;
-  const branch = process.env.GITHUB_BRANCH || settings.githubBranch || 'main';
-
-  if (!token || !repo || token.trim() === '' || repo.trim() === '') return;
-
-  const coreFiles = ['data/products.json', 'data/settings.json', 'data/users.json'];
-  for (const relFile of coreFiles) {
-    try {
-      const apiPath = relFile.replace(/\\/g, '/');
-      const res = await fetch(`https://raw.githubusercontent.com/${repo.trim()}/${branch.trim()}/${apiPath}`, {
-        headers: {
-          'Authorization': `Bearer ${token.trim()}`,
-          'User-Agent': 'ShopHQK-Server'
-        }
-      });
-      if (res.ok) {
-        const remoteText = await res.text();
-        const remoteJSON = JSON.parse(remoteText);
-        const localPath = path.join(__dirname, relFile);
-        const localJSON = readJSON(localPath, null);
-
-        if (relFile === 'data/products.json' && Array.isArray(remoteJSON)) {
-          if (!localJSON || !Array.isArray(localJSON) || remoteJSON.length > localJSON.length) {
-            safeWriteJSON(localPath, remoteJSON);
-            if (typeof invalidateProductsCache === 'function') invalidateProductsCache();
-            console.log(`[BOOT SYNC] Đã cập nhật ${relFile} (${remoteJSON.length} sản phẩm) từ GitHub!`);
-          }
-        }
-      }
-    } catch (err) {
-      console.warn(`[BOOT SYNC] Bỏ qua kéo file ${relFile}:`, err.message);
-    }
-  }
 }
 
 function writeJSON(filePath, data) {
@@ -784,15 +704,7 @@ app.get(['/api/health', '/ping'], (req, res) => {
   });
 });
 
-// ---------------- 12. API SẢN PHẨM & KHO ACC/KEY TỰ ĐỘNG (CACHE IN-MEMORY & ETAG 304 SIÊU TỐC) ----------------
-let productsVersion = Date.now().toString(36);
-let cachedSafeProducts = null;
-
-function invalidateProductsCache() {
-  productsVersion = Date.now().toString(36);
-  cachedSafeProducts = null;
-}
-
+// ---------------- 12. API SẢN PHẨM & KHO ACC/KEY TỰ ĐỘNG ----------------
 // Endpoint kiểm tra sức khỏe và chống Render ngủ đông
 app.get('/api/health', (req, res) => {
   res.setHeader('Cache-Control', 'no-cache');
@@ -807,27 +719,23 @@ setInterval(async () => {
   } catch (e) {}
 }, 10 * 60 * 1000);
 
+// Helper vô hiệu hóa cache sản phẩm
+function invalidateProductsCache() {
+  // Hook đồng bộ cache nếu cần
+}
+
 app.get('/api/products', (req, res) => {
-  const clientEtag = req.headers['if-none-match'];
-  if (clientEtag && clientEtag === `"${productsVersion}"`) {
-    return res.status(304).end();
-  }
-
-  if (!cachedSafeProducts) {
-    const products = readJSON(PRODUCTS_FILE, []);
-    cachedSafeProducts = products.map(p => {
-      const { items, ...rest } = p;
-      return {
-        ...rest,
-        stock: (p.type === 'account_keys' && Array.isArray(items)) ? items.length : p.stock,
-        hasStockItems: p.type === 'account_keys' && Array.isArray(items) && items.length > 0
-      };
-    });
-  }
-
-  res.setHeader('ETag', `"${productsVersion}"`);
-  res.setHeader('Cache-Control', 'public, max-age=5, stale-while-revalidate=15');
-  res.json({ success: true, version: productsVersion, data: cachedSafeProducts });
+  const products = readJSON(PRODUCTS_FILE, []);
+  const safeProducts = products.map(p => {
+    const { items, ...rest } = p;
+    return {
+      ...rest,
+      stock: (p.type === 'account_keys' && Array.isArray(items)) ? items.length : p.stock,
+      hasStockItems: p.type === 'account_keys' && Array.isArray(items) && items.length > 0
+    };
+  });
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.json({ success: true, data: safeProducts });
 });
 
 // Thêm sản phẩm mới (Admin)
@@ -2562,7 +2470,7 @@ app.use((req, res) => {
 });
 
 // ---------------- 23. KHỞI CHẠY SERVER ----------------
-app.listen(PORT, async () => {
+app.listen(PORT, () => {
   console.log(`================================================================`);
   console.log(`  ShopHQK Enterprise Platform dang chay tai: http://localhost:${PORT}`);
   console.log(`  - Bao mat OWASP HTTP Headers, Anti-BruteForce, Rate-Limiting: ACTIVE`);
@@ -2571,11 +2479,4 @@ app.listen(PORT, async () => {
   console.log(`  - He thong Tu dong Sao luu Dinh ky (Auto-Backup): ACTIVE`);
   console.log(`  - Kho Acc / Key Ban Hang Tu Dong: READY`);
   console.log(`================================================================`);
-
-  // Tự động kiểm tra và đồng bộ dữ liệu mới nhất từ GitHub khi boot
-  try {
-    await syncFromGitHubOnStartup();
-  } catch (e) {
-    console.warn('[BOOT SYNC] Lỗi khi kéo dữ liệu khởi động:', e.message);
-  }
 });

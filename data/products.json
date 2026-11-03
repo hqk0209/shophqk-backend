@@ -24,31 +24,5 @@
     "image": "/uploads/prod_1793697924310.webp",
     "downloadUrl": "https://link4m.org/SCxy9",
     "createdAt": "2026-11-03T09:25:24.310Z"
-  },
-  {
-    "id": "prod_1793697966623",
-    "name": "súng + trang phục",
-    "price": 0,
-    "stock": 99,
-    "type": "download",
-    "items": [],
-    "category": "FreeFireMax",
-    "description": "",
-    "image": "/uploads/prod_1793697966623.webp",
-    "downloadUrl": "https://link4m.org/AuROocfM",
-    "createdAt": "2026-11-03T09:26:06.623Z"
-  },
-  {
-    "id": "prod_1793695844789",
-    "name": "Định vị súng xanh vàng",
-    "price": 0,
-    "stock": 99,
-    "type": "download",
-    "items": [],
-    "category": "FreeFire Thường",
-    "description": "",
-    "image": "/uploads/prod_1793695844789.png",
-    "downloadUrl": "https://link4m.net/Msf7YqK",
-    "createdAt": "2026-11-03T08:50:44.789Z"
   }
 ]

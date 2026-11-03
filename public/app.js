@@ -147,6 +147,7 @@ let currentAuthTab = 'login';
 let currentUploadedBase64 = null;
 let currentSelectedFile = null;
 let editingProductId = null;
+let isSyncingProducts = false;
 
 let currentSettings = {
   shopName: "ShopHQK",
@@ -180,30 +181,25 @@ document.addEventListener('DOMContentLoaded', () => {
   startRealtimeSync();
 });
 
-// Đồng bộ dữ liệu đa thiết bị thông minh (Tối ưu hóa 99% tải mạng & pin điện thoại)
-let lastProductsEtag = '';
-let isSyncingProducts = false;
-
+// Đồng bộ dữ liệu đa thiết bị thông minh và an toàn
 async function syncProductsCheck() {
   if (isSyncingProducts) return;
   isSyncingProducts = true;
   try {
-    const headers = {};
-    if (lastProductsEtag) headers['If-None-Match'] = lastProductsEtag;
-    const res = await fetch('/api/products', { headers });
-    if (res.status === 304) {
-      return; // 304 Not Modified: 0 byte truyền tải, phản hồi tức thì 0ms!
-    }
+    const res = await fetch('/api/products?t=' + Date.now());
     if (res.ok) {
-      const etag = res.headers.get('ETag');
-      if (etag) lastProductsEtag = etag;
       const data = await res.json();
       if (data.success && Array.isArray(data.data)) {
-        allProducts = data.data;
-        localStorage.setItem('shophqk_cached_products', JSON.stringify(allProducts));
-        renderProducts();
-        if (!document.getElementById('admSectionProduct').classList.contains('hidden')) {
-          renderAdminProductsList();
+        const newJson = JSON.stringify(data.data);
+        const oldJson = JSON.stringify(allProducts);
+        if (newJson !== oldJson) {
+          allProducts = data.data;
+          localStorage.setItem('shophqk_cached_products', newJson);
+          renderProducts();
+          const admSec = document.getElementById('admSectionProduct');
+          if (admSec && !admSec.classList.contains('hidden')) {
+            renderAdminProductsList();
+          }
         }
       }
     }
@@ -498,14 +494,7 @@ function fillAdminSettingsForms() {
 // ---------------- PRODUCTS LOGIC ----------------
 async function loadProducts() {
   try {
-    const headers = {};
-    if (lastProductsEtag) headers['If-None-Match'] = lastProductsEtag;
-    const res = await fetch('/api/products', { headers });
-    if (res.status === 304) {
-      return; // Dữ liệu còn nguyên vẹn từ bộ nhớ đệm
-    }
-    const etag = res.headers.get('ETag');
-    if (etag) lastProductsEtag = etag;
+    const res = await fetch('/api/products?t=' + Date.now());
     const data = await res.json();
     if (data.success && Array.isArray(data.data)) {
       allProducts = data.data;
@@ -522,9 +511,11 @@ async function loadProducts() {
     console.error('Error loading products:', err);
     const cached = localStorage.getItem('shophqk_cached_products');
     if (cached) {
-      allProducts = JSON.parse(cached);
-      renderProducts();
-      renderAdminProductsList();
+      try {
+        allProducts = JSON.parse(cached);
+        renderProducts();
+        renderAdminProductsList();
+      } catch (e) {}
     }
   }
 }
@@ -858,7 +849,7 @@ function cancelEditingProduct() {
 }
 
 async function handleAdminAddProductSubmit(e) {
-  e.preventDefault();
+  if (e && e.preventDefault) e.preventDefault();
 
   const name = document.getElementById('admProdName').value.trim();
   const price = document.getElementById('admProdPrice').value;
@@ -869,6 +860,27 @@ async function handleAdminAddProductSubmit(e) {
   const downloadUrl = (document.getElementById('admProdDownloadUrl') ? document.getElementById('admProdDownloadUrl').value.trim() : '');
   const type = document.getElementById('admProdType')?.value || 'download';
   const itemsText = document.getElementById('admProdItemsText')?.value || '';
+
+  if (!name) {
+    showToast('Vui lòng nhập tên sản phẩm!', 'warning');
+    const nameInp = document.getElementById('admProdName');
+    if (nameInp) nameInp.focus();
+    return;
+  }
+
+  if (price === '' || isNaN(Number(price))) {
+    showToast('Vui lòng nhập giá bán sản phẩm hợp lệ!', 'warning');
+    const priceInp = document.getElementById('admProdPrice');
+    if (priceInp) priceInp.focus();
+    return;
+  }
+
+  if (stock === '' || isNaN(Number(stock))) {
+    showToast('Vui lòng nhập số lượng tồn kho hợp lệ!', 'warning');
+    const stockInp = document.getElementById('admProdStock');
+    if (stockInp) stockInp.focus();
+    return;
+  }
 
   // 1. Nếu có ảnh kéo thả / chọn từ máy tính, tiến hành upload ảnh lên server
   if (currentUploadedBase64) {
