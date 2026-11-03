@@ -1,21 +1,21 @@
 [
   {
-    "id": "audit_1793693144519_789",
+    "id": "audit_1793693191987_673",
     "action": "DELETE_PRODUCT",
     "actor": "hqk",
-    "target": "prod_1792903359070",
-    "details": "Xóa sản phẩm [Định vị trang phục cus]",
+    "target": "prod_hqk_2",
+    "details": "Xóa sản phẩm [Gói Định Vị Android VIP Antiban 2026]",
     "ip": "171.253.123.190",
-    "timestamp": "2026-11-03T08:05:44.519Z"
+    "timestamp": "2026-11-03T08:06:31.987Z"
   },
   {
-    "id": "audit_1793693141851_843",
+    "id": "audit_1793693188419_917",
     "action": "DELETE_PRODUCT",
     "actor": "hqk",
-    "target": "prod_1792903287272",
-    "details": "Xóa sản phẩm [Định vị súng và trang phục]",
+    "target": "prod_hqk_1",
+    "details": "Xóa sản phẩm [Tài Khoản Youtube Premium 1 Năm]",
     "ip": "171.253.123.190",
-    "timestamp": "2026-11-03T08:05:41.851Z"
+    "timestamp": "2026-11-03T08:06:28.419Z"
   },
   {
     "id": "audit_1793689643609_422",
