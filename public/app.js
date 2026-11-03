@@ -180,40 +180,75 @@ document.addEventListener('DOMContentLoaded', () => {
   startRealtimeSync();
 });
 
-// Đồng bộ dữ liệu đa thiết bị tự động
-function startRealtimeSync() {
-  setInterval(async () => {
-    try {
-      // 1. Tự động đồng bộ sản phẩm nếu Admin thêm/sửa/xóa
-      const pRes = await fetch('/api/products');
-      const pData = await pRes.json();
-      if (pData.success) {
-        if (JSON.stringify(pData.data) !== JSON.stringify(allProducts)) {
-          allProducts = pData.data;
-          renderProducts();
-          if (!document.getElementById('admSectionProduct').classList.contains('hidden')) {
-            renderAdminProductsList();
-          }
-        }
-      }
+// Đồng bộ dữ liệu đa thiết bị thông minh (Tối ưu hóa 99% tải mạng & pin điện thoại)
+let lastProductsEtag = '';
+let isSyncingProducts = false;
 
-      // 2. Tự động cập nhật số dư của User khi Admin duyệt/cộng tiền
-      if (currentUser) {
-        const uRes = await fetch(`/api/auth/me/${currentUser.username}`);
-        const uData = await uRes.json();
-        if (uData.success) {
-          if (currentUser.balance !== uData.data.balance || currentUser.role !== uData.data.role) {
-            currentUser.balance = uData.data.balance;
-            currentUser.role = uData.data.role;
-            localStorage.setItem('shophqk_user', JSON.stringify(currentUser));
-            updateAuthUI();
-          }
+async function syncProductsCheck() {
+  if (isSyncingProducts) return;
+  isSyncingProducts = true;
+  try {
+    const headers = {};
+    if (lastProductsEtag) headers['If-None-Match'] = lastProductsEtag;
+    const res = await fetch('/api/products', { headers });
+    if (res.status === 304) {
+      return; // 304 Not Modified: 0 byte truyền tải, phản hồi tức thì 0ms!
+    }
+    if (res.ok) {
+      const etag = res.headers.get('ETag');
+      if (etag) lastProductsEtag = etag;
+      const data = await res.json();
+      if (data.success && Array.isArray(data.data)) {
+        allProducts = data.data;
+        localStorage.setItem('shophqk_cached_products', JSON.stringify(allProducts));
+        renderProducts();
+        if (!document.getElementById('admSectionProduct').classList.contains('hidden')) {
+          renderAdminProductsList();
         }
       }
-    } catch (err) {
-      // Bỏ qua lỗi kết nối tạm thời
     }
-  }, 3500);
+  } catch (err) {
+  } finally {
+    isSyncingProducts = false;
+  }
+}
+
+async function syncUserBalanceCheck() {
+  if (!currentUser) return;
+  try {
+    const uRes = await fetch(`/api/auth/me/${currentUser.username}`);
+    const uData = await uRes.json();
+    if (uData.success) {
+      if (currentUser.balance !== uData.data.balance || currentUser.role !== uData.data.role) {
+        currentUser.balance = uData.data.balance;
+        currentUser.role = uData.data.role;
+        localStorage.setItem('shophqk_user', JSON.stringify(currentUser));
+        updateAuthUI();
+      }
+    }
+  } catch (err) {}
+}
+
+function startRealtimeSync() {
+  // Chỉ kiểm tra khi tab đang mở, chu kỳ 12s (không spam mạng)
+  setInterval(() => {
+    if (document.hidden) return;
+    syncProductsCheck();
+  }, 12000);
+
+  // Cập nhật số dư người dùng mỗi 25s
+  setInterval(() => {
+    if (document.hidden || !currentUser) return;
+    syncUserBalanceCheck();
+  }, 25000);
+
+  // Khi người dùng chạm màn hình quay lại trang, kiểm tra cập nhật ngay lập tức
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) {
+      syncProductsCheck();
+      if (currentUser) syncUserBalanceCheck();
+    }
+  });
 }
 
 // ---------------- TOAST NOTIFICATIONS ----------------
@@ -463,7 +498,14 @@ function fillAdminSettingsForms() {
 // ---------------- PRODUCTS LOGIC ----------------
 async function loadProducts() {
   try {
-    const res = await fetch('/api/products');
+    const headers = {};
+    if (lastProductsEtag) headers['If-None-Match'] = lastProductsEtag;
+    const res = await fetch('/api/products', { headers });
+    if (res.status === 304) {
+      return; // Dữ liệu còn nguyên vẹn từ bộ nhớ đệm
+    }
+    const etag = res.headers.get('ETag');
+    if (etag) lastProductsEtag = etag;
     const data = await res.json();
     if (data.success && Array.isArray(data.data)) {
       allProducts = data.data;

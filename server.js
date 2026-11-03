@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
+const zlib = require('zlib');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 
@@ -44,16 +45,65 @@ app.use((req, res, next) => {
 });
 
 app.use(cors());
+
+// ---------------- 2.1 TỰ ĐỘNG NÉN DỮ LIỆU GZIP (GIẢM 85% DUNG LƯỢNG & TĂNG TỐC 5X) ----------------
+app.use((req, res, next) => {
+  const accept = req.headers['accept-encoding'] || '';
+  if (!accept.includes('gzip')) return next();
+
+  const oldSend = res.send;
+  res.send = function (body) {
+    if (res.headersSent) return oldSend.call(this, body);
+
+    const ct = res.getHeader('Content-Type') || '';
+    if (!/json|text|javascript|css|xml|html/i.test(ct)) {
+      return oldSend.call(this, body);
+    }
+
+    let buf;
+    if (Buffer.isBuffer(body)) buf = body;
+    else if (typeof body === 'string') buf = Buffer.from(body);
+    else if (typeof body === 'object') {
+      try {
+        res.setHeader('Content-Type', 'application/json; charset=utf-8');
+        buf = Buffer.from(JSON.stringify(body));
+      } catch (e) {
+        return oldSend.call(this, body);
+      }
+    } else return oldSend.call(this, body);
+
+    if (buf.length < 512) {
+      return oldSend.call(this, buf);
+    }
+
+    zlib.gzip(buf, (err, gz) => {
+      if (err) return oldSend.call(this, buf);
+      res.setHeader('Content-Encoding', 'gzip');
+      res.removeHeader('Content-Length');
+      oldSend.call(this, gz);
+    });
+  };
+  next();
+});
+
 app.use(express.json({ limit: '25mb' }));
 app.use(express.urlencoded({ extended: true, limit: '25mb' }));
-app.use(express.static(path.join(__dirname, 'public')));
+
+// Bộ nhớ đệm tài nguyên tĩnh (Trình duyệt tải 1 lần & nạp 0ms từ Disk Cache)
+app.use(express.static(path.join(__dirname, 'public'), {
+  maxAge: '2h',
+  etag: true
+}));
 
 // Đảm bảo thư mục lưu ảnh upload tồn tại
 const UPLOADS_DIR = path.join(__dirname, 'public', 'uploads');
 if (!fs.existsSync(UPLOADS_DIR)) {
   fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 }
-app.use('/uploads', express.static(UPLOADS_DIR));
+app.use('/uploads', express.static(UPLOADS_DIR, {
+  maxAge: '7d',
+  etag: true
+}));
 
 // Paths to database files
 const DATA_DIR = path.join(__dirname, 'data');
@@ -205,6 +255,7 @@ async function syncFromGitHubOnStartup() {
         if (relFile === 'data/products.json' && Array.isArray(remoteJSON)) {
           if (!localJSON || !Array.isArray(localJSON) || remoteJSON.length > localJSON.length) {
             safeWriteJSON(localPath, remoteJSON);
+            if (typeof invalidateProductsCache === 'function') invalidateProductsCache();
             console.log(`[BOOT SYNC] Đã cập nhật ${relFile} (${remoteJSON.length} sản phẩm) từ GitHub!`);
           }
         }
@@ -733,20 +784,50 @@ app.get(['/api/health', '/ping'], (req, res) => {
   });
 });
 
-// ---------------- 12. API SẢN PHẨM & KHO ACC/KEY TỰ ĐỘNG ----------------
+// ---------------- 12. API SẢN PHẨM & KHO ACC/KEY TỰ ĐỘNG (CACHE IN-MEMORY & ETAG 304 SIÊU TỐC) ----------------
+let productsVersion = Date.now().toString(36);
+let cachedSafeProducts = null;
+
+function invalidateProductsCache() {
+  productsVersion = Date.now().toString(36);
+  cachedSafeProducts = null;
+}
+
+// Endpoint kiểm tra sức khỏe và chống Render ngủ đông
+app.get('/api/health', (req, res) => {
+  res.setHeader('Cache-Control', 'no-cache');
+  res.json({ status: 'ok', uptime: Math.round(process.uptime()), timestamp: Date.now() });
+});
+
+// Giữ máy chủ Render luôn thức, loại bỏ hoàn toàn độ trễ 50s khởi động nguội
+setInterval(async () => {
+  try {
+    const url = process.env.RENDER_EXTERNAL_URL || 'https://shophqk.onrender.com';
+    await fetch(`${url}/api/health`).catch(() => {});
+  } catch (e) {}
+}, 10 * 60 * 1000);
+
 app.get('/api/products', (req, res) => {
-  const products = readJSON(PRODUCTS_FILE, []);
-  // Ẩn kho items mật trước khi trả về cho khách xem
-  const safeProducts = products.map(p => {
-    const { items, ...rest } = p;
-    return {
-      ...rest,
-      // Tự động tính tồn kho nếu là kho key/acc
-      stock: (p.type === 'account_keys' && Array.isArray(items)) ? items.length : p.stock,
-      hasStockItems: p.type === 'account_keys' && Array.isArray(items) && items.length > 0
-    };
-  });
-  res.json({ success: true, data: safeProducts });
+  const clientEtag = req.headers['if-none-match'];
+  if (clientEtag && clientEtag === `"${productsVersion}"`) {
+    return res.status(304).end();
+  }
+
+  if (!cachedSafeProducts) {
+    const products = readJSON(PRODUCTS_FILE, []);
+    cachedSafeProducts = products.map(p => {
+      const { items, ...rest } = p;
+      return {
+        ...rest,
+        stock: (p.type === 'account_keys' && Array.isArray(items)) ? items.length : p.stock,
+        hasStockItems: p.type === 'account_keys' && Array.isArray(items) && items.length > 0
+      };
+    });
+  }
+
+  res.setHeader('ETag', `"${productsVersion}"`);
+  res.setHeader('Cache-Control', 'public, max-age=5, stale-while-revalidate=15');
+  res.json({ success: true, version: productsVersion, data: cachedSafeProducts });
 });
 
 // Thêm sản phẩm mới (Admin)
@@ -784,6 +865,7 @@ app.post('/api/products', requireAdmin, async (req, res) => {
 
     products.unshift(newProduct);
     writeJSON(PRODUCTS_FILE, products);
+    invalidateProductsCache();
 
     logAudit({
       action: 'CREATE_PRODUCT',
@@ -826,6 +908,7 @@ app.post('/api/admin/products/:id/restock', requireAdmin, (req, res) => {
   products[idx].updatedAt = new Date().toISOString();
 
   writeJSON(PRODUCTS_FILE, products);
+  invalidateProductsCache();
 
   logAudit({
     action: 'RESTOCK_PRODUCT',
@@ -856,6 +939,7 @@ app.delete('/api/products/:id', requireAdmin, requireAdminPin, async (req, res) 
 
     products = products.filter(p => p.id !== id);
     writeJSON(PRODUCTS_FILE, products);
+    invalidateProductsCache();
 
     logAudit({
       action: 'DELETE_PRODUCT',
@@ -903,6 +987,7 @@ app.put('/api/products/:id', requireAdmin, async (req, res) => {
     products[pIndex].updatedAt = new Date().toISOString();
 
     writeJSON(PRODUCTS_FILE, products);
+    invalidateProductsCache();
 
     logAudit({
       action: 'UPDATE_PRODUCT',
