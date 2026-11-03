@@ -34,15 +34,5 @@
     "balance": 0,
     "role": "user",
     "createdAt": "2026-10-26T11:41:39.595Z"
-  },
-  {
-    "id": "user_1793707526973",
-    "username": "testuser_3986",
-    "password": "$2a$10$wQNdRYGWuMTpeSTO0mPMpuDzopXe4.FKdBX9y8cHLkW7RR949Auii",
-    "fullname": "Test User",
-    "balance": 0,
-    "role": "user",
-    "isBanned": false,
-    "createdAt": "2026-11-03T12:05:26.973Z"
   }
 ]
