@@ -44,5 +44,15 @@
     "role": "user",
     "isBanned": false,
     "createdAt": "2026-11-03T12:24:27.313Z"
+  },
+  {
+    "id": "user_1793709804213",
+    "username": "odkfnfjeoenejcj",
+    "password": "$2a$10$/SyGeXakKgOgELi2uQfaYuZPqL9kmVCqpWnQ23PNn0iAgmmCTf3fS",
+    "fullname": "LÌ MOD GAME@123456",
+    "balance": 0,
+    "role": "user",
+    "isBanned": false,
+    "createdAt": "2026-11-03T12:43:24.213Z"
   }
 ]
