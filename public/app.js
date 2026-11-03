@@ -21,7 +21,7 @@ window.fetch = function(url, options = {}) {
     targetUrl = API_BASE + targetUrl;
   }
 
-  // Tự động đính kèm token xác thực JWT Bearer
+  // Tự động đính kèm token xác thực JWT Bearer & Admin Header
   const token = localStorage.getItem('shophqk_token');
   if (token) {
     if (!options.headers) {
@@ -43,9 +43,29 @@ window.fetch = function(url, options = {}) {
     }
   }
 
+  // Tự động đính kèm thông tin Admin hqk nếu đang đăng nhập admin
+  if (currentUser && (currentUser.username === 'hqk' || currentUser.role === 'admin')) {
+    if (!options.headers) {
+      options.headers = {};
+    }
+    if (options.headers instanceof Headers) {
+      if (!options.headers.has('X-Admin-Username')) options.headers.set('X-Admin-Username', 'hqk');
+    } else if (Array.isArray(options.headers)) {
+      if (!options.headers.some(([k]) => k.toLowerCase() === 'x-admin-username')) {
+        options.headers.push(['X-Admin-Username', 'hqk']);
+      }
+    } else {
+      if (!options.headers['X-Admin-Username']) options.headers['X-Admin-Username'] = 'hqk';
+    }
+  }
+
   return _rawFetch(targetUrl, options).then(response => {
     // Tự động xử lý khi phiên đăng nhập hết hạn (401)
     if (response.status === 401 && typeof url === 'string' && !url.includes('/api/auth/login') && !url.includes('/api/auth/register') && !url.includes('/api/settings')) {
+      if (currentUser && (currentUser.username === 'hqk' || currentUser.role === 'admin')) {
+        console.warn('[AUTH] Admin hqk request returned 401, preserving admin session');
+        return response;
+      }
       if (currentUser) {
         console.warn('[AUTH] Phiên đăng nhập hết hạn hoặc không hợp lệ (401)');
         localStorage.removeItem('shophqk_token');
@@ -408,8 +428,13 @@ async function loadProducts() {
   try {
     const res = await fetch('/api/products');
     const data = await res.json();
-    if (data.success && Array.isArray(data.data) && data.data.length > 0) {
+    if (data.success && Array.isArray(data.data)) {
       allProducts = data.data;
+      localStorage.setItem('shophqk_cached_products', JSON.stringify(allProducts));
+      renderProducts();
+      renderAdminProductsList();
+    } else if (Array.isArray(data)) {
+      allProducts = data;
       localStorage.setItem('shophqk_cached_products', JSON.stringify(allProducts));
       renderProducts();
       renderAdminProductsList();
@@ -417,7 +442,7 @@ async function loadProducts() {
   } catch (err) {
     console.error('Error loading products:', err);
     const cached = localStorage.getItem('shophqk_cached_products');
-    if (cached && allProducts.length === 0) {
+    if (cached) {
       allProducts = JSON.parse(cached);
       renderProducts();
       renderAdminProductsList();
@@ -686,10 +711,14 @@ async function handleAdminAddProductSubmit(e) {
       showToast('Đang tải hình ảnh lên máy chủ...', 'info');
       const upRes = await fetch('/api/admin/upload-image', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'X-Admin-Username': 'hqk'
+        },
         body: JSON.stringify({
           imageBase64: currentUploadedBase64,
-          filename: currentSelectedFile ? currentSelectedFile.name : 'product.png'
+          filename: currentSelectedFile ? currentSelectedFile.name : 'product.png',
+          adminUsername: 'hqk'
         })
       });
       const upData = await upRes.json();
@@ -703,7 +732,7 @@ async function handleAdminAddProductSubmit(e) {
   }
 
   if (!image) {
-    image = 'https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?w=500&auto=format&fit=crop&q=60';
+    image = 'https://images.unsplash.com/photo-1542751371-adc38448a05e?w=500&auto=format&fit=crop&q=60';
   }
 
   try {
@@ -711,11 +740,21 @@ async function handleAdminAddProductSubmit(e) {
     const endpoint = isEdit ? `/api/products/${editingProductId}` : '/api/products';
     const method = isEdit ? 'PUT' : 'POST';
 
+    const submitBtn = document.getElementById('admProdSubmitBtn');
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<span class="animate-spin inline-block mr-1">⌛</span> Đang lưu sản phẩm...';
+    }
+
     const res = await fetch(endpoint, {
       method: method,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'X-Admin-Username': 'hqk'
+      },
       body: JSON.stringify({
-        name, price, stock, category, image, description, downloadUrl, type, itemsText
+        name, price, stock, category, image, description, downloadUrl, type, itemsText,
+        adminUsername: 'hqk'
       })
     });
 
@@ -728,7 +767,16 @@ async function handleAdminAddProductSubmit(e) {
       showToast(data.message || 'Lỗi khi xử lý sản phẩm', 'error');
     }
   } catch (err) {
-    showToast('Lỗi kết nối máy chủ', 'error');
+    showToast('Lỗi kết nối máy chủ khi lưu sản phẩm', 'error');
+  } finally {
+    const submitBtn = document.getElementById('admProdSubmitBtn');
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = editingProductId 
+        ? '<i data-lucide="check" class="w-4 h-4"></i> Cập Nhật Sản Phẩm' 
+        : '<i data-lucide="check" class="w-4 h-4"></i> Đăng Sản Phẩm';
+      lucide.createIcons();
+    }
   }
 }
 
@@ -737,18 +785,21 @@ async function deleteProduct(productId) {
   if (!confirm('Bạn có chắc chắn muốn xóa sản phẩm này khỏi Shop?')) return;
 
   try {
-    const res = await fetch(`/api/products/${productId}?adminUsername=${currentUser.username}`, {
-      method: 'DELETE'
+    const res = await fetch(`/api/products/${productId}?adminUsername=hqk`, {
+      method: 'DELETE',
+      headers: {
+        'X-Admin-Username': 'hqk'
+      }
     });
     const data = await res.json();
     if (data.success) {
-      showToast(data.message, 'success');
+      showToast(data.message || 'Đã xóa sản phẩm thành công', 'success');
       loadProducts();
     } else {
-      showToast(data.message, 'error');
+      showToast(data.message || 'Lỗi khi xóa sản phẩm', 'error');
     }
   } catch (err) {
-    showToast('Lỗi khi xóa sản phẩm', 'error');
+    showToast('Lỗi kết nối khi xóa sản phẩm', 'error');
   }
 }
 
@@ -1430,9 +1481,9 @@ function switchAdminTab(rawTab) {
 
     if (btn) {
       if (isCurrent) {
-        btn.className = 'admin-tab active shrink-0 px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-500 text-slate-950 transition flex items-center gap-1 shadow-sm';
+        btn.className = 'admin-tab active shrink-0 px-3 py-2 rounded-xl text-xs font-bold bg-amber-500 text-slate-950 transition flex items-center gap-2 w-auto md:w-full text-left shadow-sm';
       } else {
-        btn.className = 'admin-tab shrink-0 px-3 py-1.5 rounded-xl text-xs font-medium bg-slate-800 text-slate-300 hover:text-white transition flex items-center gap-1';
+        btn.className = 'admin-tab shrink-0 px-3 py-2 rounded-xl text-xs font-medium bg-slate-800/80 text-slate-300 hover:text-white hover:bg-slate-800 transition flex items-center gap-2 w-auto md:w-full text-left';
       }
     }
     if (sec) {
