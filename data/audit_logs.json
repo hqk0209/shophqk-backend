@@ -1,5 +1,23 @@
 [
   {
+    "id": "audit_1793693476544_133",
+    "action": "LOGIN_SUCCESS",
+    "actor": "hqk",
+    "target": "",
+    "details": "Đăng nhập thành công (admin)",
+    "ip": "171.253.123.190",
+    "timestamp": "2026-11-03T08:11:16.544Z"
+  },
+  {
+    "id": "audit_1793693475952_590",
+    "action": "LOGIN_FAILED",
+    "actor": "hqk",
+    "target": "",
+    "details": "Sai tài khoản hoặc mật khẩu",
+    "ip": "171.253.123.190",
+    "timestamp": "2026-11-03T08:11:15.952Z"
+  },
+  {
     "id": "audit_1793693191987_673",
     "action": "DELETE_PRODUCT",
     "actor": "hqk",
