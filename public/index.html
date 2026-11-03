@@ -143,8 +143,8 @@
       </div>
     </div>
 
-    <!-- Products Grid (2 columns on mobile, 3 on tablet, 4 on desktop) -->
-    <div id="productsGrid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-5">
+    <!-- Products Grid (2 columns on mobile, 3 on tablet, 4 on laptop, 5 on wide desktop) -->
+    <div id="productsGrid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2.5 sm:gap-4 md:gap-5">
       <!-- Product cards loaded via JS -->
     </div>
 
@@ -159,7 +159,7 @@
   </main>
 
   <!-- FOOTER -->
-  <footer class="border-t border-slate-900 bg-slate-950 py-6 text-center text-xs text-slate-500">
+  <footer class="border-t border-slate-900 bg-slate-950/80 py-8 text-center text-xs text-slate-500">
     <p>© 2026 <span id="footerShopName">ShopHQK</span>. Cổng thanh toán quét mã VietQR tự động 24/7.</p>
     <div id="footerContacts" class="flex justify-center gap-4 mt-2 text-[11px] text-slate-400">
       <span id="footerZalo">Zalo: 0349340730</span>
@@ -167,26 +167,54 @@
     </div>
   </footer>
 
-  <!-- MOBILE BOTTOM STICKY NAVIGATION BAR (Tối ưu riêng cho điện thoại) -->
-  <div class="fixed bottom-0 left-0 right-0 z-40 bg-slate-900/95 backdrop-blur-md border-t border-slate-800 flex justify-around items-center py-2 px-1 md:hidden">
-    <button onclick="window.scrollTo({top:0, behavior:'smooth'})" class="flex flex-col items-center text-indigo-400 gap-0.5">
-      <i data-lucide="store" class="w-5 h-5"></i>
-      <span class="text-[10px] font-semibold">Cửa Hàng</span>
+  <!-- FLOATING QUICK SUPPORT WIDGET (Tương tác nhanh trên mọi màn hình) -->
+  <div class="fixed bottom-20 md:bottom-6 right-3 md:right-6 z-40 flex flex-col items-end gap-2">
+    <div id="quickContactMenu" class="hidden glass-dropdown rounded-2xl p-2.5 shadow-2xl flex flex-col gap-1.5 mb-1 modal-animate">
+      <a id="floatingZalo" href="https://zalo.me/0349340730" target="_blank" class="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-200 hover:text-white hover:bg-blue-600/20 transition">
+        <span class="w-2 h-2 rounded-full bg-blue-500"></span> Zalo Hỗ Trợ
+      </a>
+      <a id="floatingTelegram" href="https://t.me/hqk0209" target="_blank" class="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-200 hover:text-white hover:bg-cyan-600/20 transition">
+        <span class="w-2 h-2 rounded-full bg-cyan-400"></span> Telegram 24/7
+      </a>
+      <a id="floatingFacebook" href="https://facebook.com" target="_blank" class="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-200 hover:text-white hover:bg-indigo-600/20 transition">
+        <span class="w-2 h-2 rounded-full bg-indigo-500"></span> Fanpage Facebook
+      </a>
+    </div>
+    <button type="button" onclick="toggleQuickContact()" title="Liên hệ CSKH" class="w-12 h-12 bg-gradient-to-tr from-indigo-600 to-violet-500 hover:from-indigo-500 text-white rounded-full shadow-lg shadow-indigo-500/30 flex items-center justify-center active:scale-90 transition cursor-pointer">
+      <i data-lucide="headset" class="w-5 h-5"></i>
     </button>
-    <button onclick="openDepositModal()" class="flex flex-col items-center text-slate-400 hover:text-emerald-400 gap-0.5">
-      <i data-lucide="wallet-cards" class="w-5 h-5 text-emerald-400"></i>
-      <span class="text-[10px] font-semibold">Nạp Tiền</span>
+  </div>
+
+  <!-- MOBILE BOTTOM STICKY NAVIGATION BAR (Tối ưu riêng chuẩn Native App cho điện thoại) -->
+  <div class="fixed bottom-0 left-0 right-0 z-40 bg-slate-900/90 backdrop-blur-xl border-t border-slate-800/90 flex justify-around items-center pt-2 pb-safe px-2 md:hidden shadow-2xl">
+    <button onclick="window.scrollTo({top:0, behavior:'smooth'})" class="flex flex-col items-center text-indigo-400 gap-1 active:scale-95 transition">
+      <div class="p-1 rounded-xl bg-indigo-500/15">
+        <i data-lucide="store" class="w-5 h-5 text-indigo-400"></i>
+      </div>
+      <span class="text-[10px] font-bold">Cửa Hàng</span>
     </button>
-    <button id="mobileNavAdminBtn" onclick="openAdminPanel()" class="hidden flex flex-col items-center text-amber-400 gap-0.5">
-      <i data-lucide="crown" class="w-5 h-5 text-amber-400"></i>
+    <button onclick="openDepositModal()" class="flex flex-col items-center text-slate-400 hover:text-emerald-400 gap-1 active:scale-95 transition">
+      <div class="p-1 rounded-xl bg-emerald-500/10">
+        <i data-lucide="wallet-cards" class="w-5 h-5 text-emerald-400"></i>
+      </div>
+      <span class="text-[10px] font-bold text-emerald-400">Nạp Tiền</span>
+    </button>
+    <button id="mobileNavAdminBtn" onclick="openAdminPanel()" class="hidden flex flex-col items-center text-amber-400 gap-1 active:scale-95 transition">
+      <div class="p-1 rounded-xl bg-amber-500/15">
+        <i data-lucide="crown" class="w-5 h-5 text-amber-400"></i>
+      </div>
       <span class="text-[10px] font-bold">Quản Trị</span>
     </button>
-    <button onclick="openHistoryModal()" class="flex flex-col items-center text-slate-400 hover:text-amber-400 gap-0.5">
-      <i data-lucide="clock" class="w-5 h-5"></i>
+    <button onclick="openHistoryModal()" class="flex flex-col items-center text-slate-400 hover:text-amber-400 gap-1 active:scale-95 transition">
+      <div class="p-1 rounded-xl hover:bg-amber-500/10">
+        <i data-lucide="clock" class="w-5 h-5"></i>
+      </div>
       <span class="text-[10px] font-semibold">Lịch Sử</span>
     </button>
-    <button id="mobileNavAccountBtn" onclick="handleMobileAccountClick()" class="flex flex-col items-center text-slate-400 hover:text-white gap-0.5">
-      <i data-lucide="user" class="w-5 h-5"></i>
+    <button id="mobileNavAccountBtn" onclick="handleMobileAccountClick()" class="flex flex-col items-center text-slate-400 hover:text-white gap-1 active:scale-95 transition">
+      <div class="p-1 rounded-xl hover:bg-slate-800">
+        <i data-lucide="user" class="w-5 h-5"></i>
+      </div>
       <span class="text-[10px] font-semibold" id="mobileAccountLabel">Tài Khoản</span>
     </button>
   </div>
@@ -212,8 +240,8 @@
         </div>
       </div>
 
-      <!-- Admin Tabs Navigation (Tự động xuống dòng hiển thị đầy đủ mọi tab) -->
-      <div class="flex flex-wrap gap-1.5 border-b border-slate-800 pb-2.5 mb-3.5 shrink-0">
+      <!-- Admin Tabs Navigation (Cuộn ngang mượt mà trên mobile, không bị tràn màn hình) -->
+      <div class="flex items-center gap-1.5 overflow-x-auto no-scrollbar border-b border-slate-800 pb-2.5 mb-3.5 shrink-0 py-0.5">
         <button id="admTabProduct" onclick="switchAdminTab('product')" class="admin-tab active shrink-0 px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-500 text-slate-950 transition flex items-center gap-1">
           <i data-lucide="package-plus" class="w-3.5 h-3.5"></i> Thêm/Sửa SP
         </button>
@@ -1056,7 +1084,12 @@
         </div>
         <div>
           <label class="block text-xs font-semibold text-slate-400 mb-1">Mật khẩu</label>
-          <input type="password" id="authPassword" required placeholder="••••••••" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500">
+          <div class="relative">
+            <input type="password" id="authPassword" required placeholder="••••••••" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 pr-10 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500">
+            <button type="button" onclick="togglePasswordVisibility('authPassword', this)" class="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-1">
+              <i data-lucide="eye" class="w-4 h-4"></i>
+            </button>
+          </div>
         </div>
 
         <button type="submit" id="authSubmitBtn" class="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow-lg transition text-xs">
@@ -1121,24 +1154,44 @@
 
         <!-- Step 2: Hiển thị mã QR -->
         <div id="depositStep2" class="hidden space-y-3.5 text-center">
-          <div class="bg-white p-2.5 rounded-2xl inline-block shadow-xl border-4 border-cyan-500/30">
-            <img id="vietqrImage" src="" alt="Mã VietQR" class="w-56 h-56 object-contain mx-auto rounded-lg">
+          <div class="bg-white p-2 sm:p-2.5 rounded-2xl inline-block shadow-xl border-4 border-cyan-500/30 max-w-[220px] w-full">
+            <img id="vietqrImage" src="" alt="Mã VietQR" class="w-full aspect-square object-contain mx-auto rounded-lg">
           </div>
 
-          <div class="bg-slate-950 border border-slate-800 rounded-xl p-3 text-left space-y-1.5 text-xs">
-            <div class="flex justify-between">
+          <!-- Quick QR Actions -->
+          <div class="flex items-center justify-center gap-2">
+            <button type="button" onclick="downloadQRCode()" class="px-3 py-1.5 bg-cyan-600/20 hover:bg-cyan-600/30 text-cyan-300 border border-cyan-500/30 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 active:scale-95 shadow-sm">
+              <i data-lucide="download" class="w-3.5 h-3.5"></i> Tải Mã QR
+            </button>
+            <button type="button" onclick="copyAllTransferInfo()" class="px-3 py-1.5 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 active:scale-95 shadow-sm">
+              <i data-lucide="copy" class="w-3.5 h-3.5"></i> Chép Toàn Bộ TT
+            </button>
+          </div>
+
+          <div class="bg-slate-950 border border-slate-800 rounded-xl p-3 text-left space-y-2 text-xs">
+            <div class="flex justify-between items-center">
               <span class="text-slate-400">Ngân hàng:</span>
-              <span id="qrBankName" class="font-bold text-white">MB Bank</span>
+              <div class="flex items-center gap-1.5">
+                <span id="qrBankName" class="font-bold text-white">MB Bank</span>
+                <button type="button" onclick="copyBankName()" title="Sao chép tên ngân hàng" class="p-1 hover:bg-slate-800 rounded text-cyan-400">
+                  <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                </button>
+              </div>
             </div>
-            <div class="flex justify-between">
+            <div class="flex justify-between items-center">
               <span class="text-slate-400">Số tài khoản:</span>
-              <span id="qrAccountNo" class="font-bold text-white font-mono">0987654321</span>
+              <div class="flex items-center gap-1.5">
+                <span id="qrAccountNo" class="font-bold text-white font-mono text-sm">0987654321</span>
+                <button type="button" onclick="copyAccountNo()" title="Sao chép số tài khoản" class="p-1 hover:bg-slate-800 rounded text-cyan-400">
+                  <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                </button>
+              </div>
             </div>
-            <div class="flex justify-between">
+            <div class="flex justify-between items-center">
               <span class="text-slate-400">Chủ tài khoản:</span>
               <span id="qrAccountName" class="font-bold text-white">SHOPHQK STORE</span>
             </div>
-            <div class="flex justify-between">
+            <div class="flex justify-between items-center">
               <span class="text-slate-400">Số tiền:</span>
               <span id="qrAmountText" class="font-bold text-emerald-400 text-sm">0 VNĐ</span>
             </div>
@@ -1146,12 +1199,16 @@
               <span class="text-slate-400">Nội dung CK:</span>
               <div class="flex items-center gap-1.5">
                 <span id="qrMemo" class="font-mono font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">NAP...</span>
-                <button onclick="copyMemo()" title="Sao chép nội dung" class="p-1 hover:bg-slate-800 rounded text-slate-300">
+                <button type="button" onclick="copyMemo()" title="Sao chép nội dung" class="p-1 hover:bg-slate-800 rounded text-amber-400">
                   <i data-lucide="copy" class="w-3.5 h-3.5"></i>
                 </button>
               </div>
             </div>
           </div>
+
+          <p class="text-[10px] text-cyan-300/80 bg-cyan-950/40 p-2 rounded-xl border border-cyan-500/20 text-center leading-relaxed">
+            💡 Mở App Ngân Hàng (MB, Vietcombank, Momo...) & chọn <strong>Quét mã QR</strong> hoặc dán STK & Nội dung trên để chuyển tiền tự động!
+          </p>
 
           <!-- Khung trạng thái tự động duyệt Realtime -->
           <div id="depositLiveStatusBox" class="bg-indigo-950/70 border border-cyan-500/30 rounded-xl p-3 text-xs text-indigo-200 flex items-start gap-2.5 text-left transition-all">
@@ -1279,7 +1336,7 @@
 
   <!-- MODAL: LỊCH SỬ GIAO DỊCH -->
   <div id="historyModal" class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-sm hidden">
-    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-2xl w-full p-4 sm:p-6 shadow-2xl relative max-h-[88vh] flex flex-col">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-2xl w-full p-4 sm:p-6 shadow-2xl relative max-h-[88vh] flex flex-col modal-animate">
       <button onclick="closeModal('historyModal')" class="absolute top-3.5 right-3.5 text-slate-400 hover:text-white p-1 rounded-lg">
         <i data-lucide="x" class="w-5 h-5"></i>
       </button>
@@ -1294,9 +1351,189 @@
         </div>
       </div>
 
+      <!-- History Filter Tabs -->
+      <div class="flex items-center gap-1.5 mb-3 border-b border-slate-800 pb-2">
+        <button type="button" id="histFilterAll" onclick="filterHistoryTab('all')" class="px-3 py-1 rounded-lg text-xs font-bold bg-amber-500 text-slate-950 transition active:scale-95 shadow-sm">Tất Cả</button>
+        <button type="button" id="histFilterDeposit" onclick="filterHistoryTab('deposit')" class="px-3 py-1 rounded-lg text-xs font-semibold bg-slate-800 text-slate-300 hover:text-white transition active:scale-95">Nạp Tiền</button>
+        <button type="button" id="histFilterOrder" onclick="filterHistoryTab('order')" class="px-3 py-1 rounded-lg text-xs font-semibold bg-slate-800 text-slate-300 hover:text-white transition active:scale-95">Đơn Mua Hàng</button>
+      </div>
+
       <div class="flex-1 overflow-y-auto space-y-2 pr-1" id="historyList">
         <!-- Render transactions -->
       </div>
+    </div>
+  </div>
+
+  <!-- MODAL: XEM CHI TIẾT & XÁC NHẬN MUA SẢN PHẨM (RESPONSIVE CHO CẢ PC & ĐIỆN THOẠI) -->
+  <div id="productDetailModal" class="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/80 backdrop-blur-md hidden">
+    <div class="bg-slate-900 border border-slate-800 rounded-t-3xl sm:rounded-2xl max-w-lg w-full p-5 sm:p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto modal-sheet-animate sm:modal-animate flex flex-col">
+      <button onclick="closeModal('productDetailModal')" class="absolute top-4 right-4 text-slate-400 hover:text-white p-1 rounded-lg z-10">
+        <i data-lucide="x" class="w-5 h-5"></i>
+      </button>
+
+      <!-- Header & Badges -->
+      <div class="flex flex-col sm:flex-row gap-4 mb-4">
+        <div class="w-full sm:w-36 aspect-[16/10] sm:aspect-square bg-slate-950 rounded-xl overflow-hidden border border-slate-800 shrink-0 relative">
+          <img id="detailProdImage" src="" alt="Sản phẩm" class="w-full h-full object-cover">
+          <div id="detailProdCategory" class="absolute top-2 left-2 bg-slate-900/90 text-indigo-300 text-[10px] font-bold px-2 py-0.5 rounded-lg border border-slate-700 shadow">
+            Danh mục
+          </div>
+        </div>
+
+        <div class="flex-1 flex flex-col justify-between">
+          <div>
+            <div class="flex items-center gap-2 mb-1.5 flex-wrap">
+              <span id="detailProdStock" class="px-2 py-0.5 rounded-lg text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Còn hàng</span>
+              <span id="detailProdTypeBadge" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-semibold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                <i data-lucide="zap" class="w-3 h-3"></i> Tự động 24/7
+              </span>
+            </div>
+            <h2 id="detailProdName" class="text-base sm:text-lg font-extrabold text-white leading-snug">Tên sản phẩm</h2>
+          </div>
+
+          <div class="mt-2 pt-2 border-t border-slate-800/80 flex items-center justify-between">
+            <span class="text-xs text-slate-400">Đơn giá:</span>
+            <span id="detailProdPrice" class="text-base sm:text-lg font-extrabold text-emerald-400">0 đ</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Description -->
+      <div class="bg-slate-950/80 border border-slate-800/80 rounded-xl p-3 mb-4">
+        <h4 class="text-[11px] font-bold text-slate-400 mb-1 flex items-center gap-1.5">
+          <i data-lucide="info" class="w-3.5 h-3.5 text-cyan-400"></i> Mô tả chi tiết & Hướng dẫn:
+        </h4>
+        <p id="detailProdDesc" class="text-xs text-slate-300 leading-relaxed whitespace-pre-wrap max-h-32 overflow-y-auto pr-1">Mô tả sản phẩm...</p>
+      </div>
+
+      <!-- Quantity Selector & Calculation -->
+      <div class="bg-slate-950/90 border border-slate-800 rounded-xl p-3.5 mb-4 space-y-3">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-semibold text-slate-300">Chọn số lượng mua:</span>
+          <div class="flex items-center bg-slate-900 border border-slate-700 rounded-xl overflow-hidden p-0.5">
+            <button type="button" onclick="changeDetailQty(-1)" class="w-8 h-8 flex items-center justify-center text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg active:scale-90 font-bold transition">
+              <i data-lucide="minus" class="w-3.5 h-3.5"></i>
+            </button>
+            <input type="number" id="detailBuyQtyInput" readonly value="1" class="w-12 text-center bg-transparent text-xs font-extrabold text-white focus:outline-none">
+            <button type="button" onclick="changeDetailQty(1)" class="w-8 h-8 flex items-center justify-center text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg active:scale-90 font-bold transition">
+              <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+            </button>
+          </div>
+        </div>
+
+        <div class="pt-2.5 border-t border-slate-800 space-y-1.5 text-xs">
+          <div class="flex justify-between">
+            <span class="text-slate-400">Tổng thanh toán:</span>
+            <span id="detailTotalCost" class="font-extrabold text-white text-sm">0 đ</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-400">Số dư hiện tại của bạn:</span>
+            <span id="detailUserBalance" class="font-bold text-slate-200">0 đ</span>
+          </div>
+          <div id="detailRemainingBox" class="flex justify-between pt-1 border-t border-slate-800/80">
+            <span class="text-slate-400">Số dư sau khi mua:</span>
+            <span id="detailRemainingBalance" class="font-bold text-emerald-400">0 đ</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="mt-auto space-y-2">
+        <button id="detailConfirmBuyBtn" type="button" onclick="confirmExecuteBuy()" class="w-full py-3 bg-gradient-to-r from-emerald-600 via-teal-600 to-indigo-600 hover:from-emerald-500 text-white font-extrabold rounded-xl shadow-lg shadow-emerald-500/20 transition flex items-center justify-center gap-2 text-xs sm:text-sm active:scale-95">
+          <i data-lucide="shopping-bag" class="w-4 h-4"></i> Xác Nhận Thanh Toán
+        </button>
+
+        <button id="detailNeedDepositBtn" type="button" onclick="closeModal('productDetailModal'); openDepositModal()" class="hidden w-full py-3 bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 text-white font-bold rounded-xl shadow-lg transition flex items-center justify-center gap-2 text-xs sm:text-sm active:scale-95">
+          <i data-lucide="wallet-cards" class="w-4 h-4"></i> Nạp Tiền Qua VietQR Ngay
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: MOBILE USER ACCOUNT DRAWER (CHUẨN APP DI ĐỘNG NATIVE) -->
+  <div id="mobileUserModal" class="fixed inset-0 z-50 flex items-end justify-center p-0 bg-black/80 backdrop-blur-md hidden md:hidden">
+    <div class="bg-slate-900 border-t border-slate-700/80 rounded-t-3xl w-full p-5 shadow-2xl relative max-h-[85vh] overflow-y-auto modal-sheet-animate pb-safe">
+      <!-- Drag handle bar -->
+      <div class="w-12 h-1.5 bg-slate-700 rounded-full mx-auto mb-4"></div>
+
+      <button onclick="closeModal('mobileUserModal')" class="absolute top-4 right-4 text-slate-400 hover:text-white p-1 rounded-lg">
+        <i data-lucide="x" class="w-5 h-5"></i>
+      </button>
+
+      <!-- User Profile Header -->
+      <div class="flex items-center gap-3 mb-4 pb-4 border-b border-slate-800">
+        <div class="w-12 h-12 rounded-2xl bg-gradient-to-tr from-indigo-600 to-violet-500 text-white flex items-center justify-center font-extrabold text-lg shadow-lg shadow-indigo-500/30">
+          <span id="mobDrawerAvatarInitial">U</span>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h3 id="mobDrawerUsername" class="text-base font-extrabold text-white">Username</h3>
+            <span id="mobDrawerRoleBadge" class="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/40">VIP</span>
+          </div>
+          <p class="text-xs text-slate-400 mt-0.5">Tài khoản thành viên ShopHQK</p>
+        </div>
+      </div>
+
+      <!-- Balance Card -->
+      <div class="bg-gradient-to-br from-indigo-900/60 via-slate-900 to-violet-900/40 border border-indigo-500/30 rounded-2xl p-4 mb-4 shadow-xl">
+        <div class="flex items-center justify-between">
+          <div>
+            <span class="text-[11px] font-semibold text-slate-400 block">Số dư khả dụng:</span>
+            <span id="mobDrawerBalance" class="text-xl font-extrabold text-emerald-400">0 đ</span>
+          </div>
+          <button type="button" onclick="closeModal('mobileUserModal'); openDepositModal()" class="px-3.5 py-2 bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 font-extrabold text-xs rounded-xl shadow-lg flex items-center gap-1.5 active:scale-95 transition">
+            <i data-lucide="plus-circle" class="w-4 h-4"></i> Nạp Ngay
+          </button>
+        </div>
+      </div>
+
+      <!-- Quick Action Navigation List -->
+      <div class="space-y-1.5 mb-4 text-xs font-semibold">
+        <button type="button" onclick="closeModal('mobileUserModal'); openHistoryModal()" class="w-full flex items-center justify-between p-3 rounded-xl bg-slate-950/70 hover:bg-slate-800 border border-slate-800/80 text-slate-200 transition">
+          <div class="flex items-center gap-2.5">
+            <div class="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center">
+              <i data-lucide="clock" class="w-4 h-4"></i>
+            </div>
+            <span>Lịch sử mua hàng & Nạp tiền</span>
+          </div>
+          <i data-lucide="chevron-right" class="w-4 h-4 text-slate-500"></i>
+        </button>
+
+        <button type="button" id="mobDrawerAdminBtn" onclick="closeModal('mobileUserModal'); openAdminPanel()" class="hidden w-full flex items-center justify-between p-3 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-300 transition">
+          <div class="flex items-center gap-2.5">
+            <div class="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center">
+              <i data-lucide="crown" class="w-4 h-4"></i>
+            </div>
+            <span>Bảng Quản Trị Shop (Admin)</span>
+          </div>
+          <i data-lucide="chevron-right" class="w-4 h-4 text-amber-400"></i>
+        </button>
+
+        <button type="button" onclick="closeModal('mobileUserModal'); openChangePasswordModal()" class="w-full flex items-center justify-between p-3 rounded-xl bg-slate-950/70 hover:bg-slate-800 border border-slate-800/80 text-slate-200 transition">
+          <div class="flex items-center gap-2.5">
+            <div class="w-8 h-8 rounded-lg bg-indigo-500/10 text-indigo-400 flex items-center justify-center">
+              <i data-lucide="key-round" class="w-4 h-4"></i>
+            </div>
+            <span>Đổi mật khẩu tài khoản</span>
+          </div>
+          <i data-lucide="chevron-right" class="w-4 h-4 text-slate-500"></i>
+        </button>
+
+        <a href="https://zalo.me/0349340730" target="_blank" class="w-full flex items-center justify-between p-3 rounded-xl bg-slate-950/70 hover:bg-slate-800 border border-slate-800/80 text-slate-200 transition">
+          <div class="flex items-center gap-2.5">
+            <div class="w-8 h-8 rounded-lg bg-blue-500/10 text-blue-400 flex items-center justify-center">
+              <i data-lucide="message-circle" class="w-4 h-4"></i>
+            </div>
+            <span>Liên hệ CSKH Zalo 24/7</span>
+          </div>
+          <i data-lucide="chevron-right" class="w-4 h-4 text-slate-500"></i>
+        </a>
+      </div>
+
+      <!-- Logout Button -->
+      <button type="button" onclick="closeModal('mobileUserModal'); logout()" class="w-full py-2.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 active:scale-95">
+        <i data-lucide="log-out" class="w-4 h-4"></i> Đăng Xuất Khỏi Thiết Bị
+      </button>
     </div>
   </div>
 
@@ -1347,7 +1584,7 @@
         <p class="text-[10px] text-slate-500 text-center">💡 Link tải này cũng đã được lưu trong <strong>Lịch Sử Giao Dịch</strong> của bạn.</p>
       </div>
 
-      <button onclick="closeModal('buySuccessModal')" class="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl text-xs transition">
+      <button onclick="closeModal('buySuccessModal')" class="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl text-xs transition active:scale-95">
         Hoàn Tất & Đóng
       </button>
     </div>
@@ -1355,7 +1592,7 @@
 
   <!-- MODAL: ĐỔI MẬT KHẨU TÀI KHOẢN -->
   <div id="changePasswordModal" class="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/80 backdrop-blur-md hidden">
-    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-sm w-full p-5 shadow-2xl relative">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-sm w-full p-5 shadow-2xl relative modal-animate">
       <button onclick="closeModal('changePasswordModal')" class="absolute top-3.5 right-3.5 text-slate-400 hover:text-white p-1 rounded-lg">
         <i data-lucide="x" class="w-5 h-5"></i>
       </button>
@@ -1373,25 +1610,40 @@
       <form id="changePasswordForm" onsubmit="handleChangePasswordSubmit(event)" class="space-y-3">
         <div>
           <label class="block text-xs font-semibold text-slate-300 mb-1">Mật khẩu hiện tại</label>
-          <input type="password" id="cpOldPassword" required placeholder="Nhập mật khẩu hiện tại..." class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-amber-500">
+          <div class="relative">
+            <input type="password" id="cpOldPassword" required placeholder="Nhập mật khẩu hiện tại..." class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 pr-9 text-xs text-slate-100 focus:outline-none focus:border-amber-500">
+            <button type="button" onclick="togglePasswordVisibility('cpOldPassword', this)" class="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-0.5">
+              <i data-lucide="eye" class="w-3.5 h-3.5"></i>
+            </button>
+          </div>
         </div>
         <div>
           <label class="block text-xs font-semibold text-slate-300 mb-1">Mật khẩu mới</label>
-          <input type="password" id="cpNewPassword" required minlength="6" placeholder="Tối thiểu 6 ký tự..." class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-amber-500">
+          <div class="relative">
+            <input type="password" id="cpNewPassword" required minlength="6" placeholder="Tối thiểu 6 ký tự..." class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 pr-9 text-xs text-slate-100 focus:outline-none focus:border-amber-500">
+            <button type="button" onclick="togglePasswordVisibility('cpNewPassword', this)" class="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-0.5">
+              <i data-lucide="eye" class="w-3.5 h-3.5"></i>
+            </button>
+          </div>
         </div>
         <div>
           <label class="block text-xs font-semibold text-slate-300 mb-1">Xác nhận mật khẩu mới</label>
-          <input type="password" id="cpConfirmPassword" required minlength="6" placeholder="Nhập lại mật khẩu mới..." class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-amber-500">
+          <div class="relative">
+            <input type="password" id="cpConfirmPassword" required minlength="6" placeholder="Nhập lại mật khẩu mới..." class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 pr-9 text-xs text-slate-100 focus:outline-none focus:border-amber-500">
+            <button type="button" onclick="togglePasswordVisibility('cpConfirmPassword', this)" class="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-0.5">
+              <i data-lucide="eye" class="w-3.5 h-3.5"></i>
+            </button>
+          </div>
         </div>
-        <button type="submit" class="w-full py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl shadow-lg transition text-xs mt-2">
+        <button type="submit" class="w-full py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl shadow-lg transition text-xs mt-2 active:scale-95">
           Xác Nhận Đổi Mật Khẩu
         </button>
       </form>
     </div>
   </div>
 
-  <!-- TOAST NOTIFICATION CONTAINER -->
-  <div id="toastContainer" class="fixed bottom-16 sm:bottom-5 right-3 sm:right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
+  <!-- TOAST NOTIFICATION CONTAINER (Tối ưu vị trí trên đỉnh màn hình, không bị che) -->
+  <div id="toastContainer" class="fixed top-4 left-1/2 -translate-x-1/2 sm:left-auto sm:right-5 sm:top-5 sm:translate-x-0 z-[9999] flex flex-col items-center sm:items-end gap-2 pointer-events-none w-[92vw] sm:w-auto max-w-sm"></div>
 
   <!-- Script app -->
   <script src="app.js"></script>
