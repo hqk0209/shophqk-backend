@@ -1,21 +1,12 @@
 [
   {
-    "id": "audit_1793697877513_695",
+    "id": "audit_1793697924312_936",
     "action": "CREATE_PRODUCT",
     "actor": "hqk",
-    "target": "prod_1793697877503",
+    "target": "prod_1793697924310",
     "details": "Tạo sản phẩm [đvi súng] với giá 0đ (Kho: 99)",
     "ip": "171.253.123.190",
-    "timestamp": "2026-11-03T09:24:37.513Z"
-  },
-  {
-    "id": "audit_1793697849705_935",
-    "action": "DELETE_PRODUCT",
-    "actor": "hqk",
-    "target": "prod_1793695844789",
-    "details": "Xóa sản phẩm [Định vị súng xanh vàng]",
-    "ip": "171.253.123.190",
-    "timestamp": "2026-11-03T09:24:09.705Z"
+    "timestamp": "2026-11-03T09:25:24.312Z"
   },
   {
     "id": "audit_1793689643609_422",
