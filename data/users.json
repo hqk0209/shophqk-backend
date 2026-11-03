@@ -94,5 +94,15 @@
     "role": "user",
     "isBanned": false,
     "createdAt": "2026-11-03T15:16:30.316Z"
+  },
+  {
+    "id": "user_1793720980311",
+    "username": "bonnn",
+    "password": "$2a$10$j53c6zNQAclXgn.BOD5RAu.wKMNWKe5f5ZuXj.CL/i9qi7vedmEZe",
+    "fullname": "khôi Nguyên",
+    "balance": 0,
+    "role": "user",
+    "isBanned": false,
+    "createdAt": "2026-11-03T15:49:40.311Z"
   }
 ]
