@@ -54,5 +54,15 @@
     "role": "user",
     "isBanned": false,
     "createdAt": "2026-11-03T12:43:24.213Z"
+  },
+  {
+    "id": "user_1793710537919",
+    "username": "concac",
+    "password": "$2a$10$sw/GAO2rIEjtTVqrjoBDpujZRWsJRtjz.7.Qemoawe37WvplYBNju",
+    "fullname": "concac",
+    "balance": 0,
+    "role": "user",
+    "isBanned": false,
+    "createdAt": "2026-11-03T12:55:37.919Z"
   }
 ]
