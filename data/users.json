@@ -124,5 +124,15 @@
     "role": "user",
     "isBanned": false,
     "createdAt": "2026-11-04T08:48:56.212Z"
+  },
+  {
+    "id": "user_1793811673113",
+    "username": "hqkoccac",
+    "password": "$2a$10$LYnGunynbSY.QseMujraQ.ErCFsW45cX0oSFCVVhyOl8Xa9np6ldC",
+    "fullname": "Quan",
+    "balance": 0,
+    "role": "user",
+    "isBanned": false,
+    "createdAt": "2026-11-04T17:01:13.113Z"
   }
 ]
