@@ -104,5 +104,15 @@
     "role": "user",
     "isBanned": false,
     "createdAt": "2026-11-03T15:49:40.311Z"
+  },
+  {
+    "id": "user_1793768190615",
+    "username": "hqkcube",
+    "password": "$2a$10$cHKIL9qQWMrWH4UC0wpYqe.NPpcr5aCcPlBFXxn/QOOtGkWTTTMLu",
+    "fullname": "nguyen van cu",
+    "balance": 0,
+    "role": "user",
+    "isBanned": false,
+    "createdAt": "2026-11-04T04:56:30.615Z"
   }
 ]
