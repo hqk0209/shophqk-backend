@@ -114,5 +114,15 @@
     "role": "user",
     "isBanned": false,
     "createdAt": "2026-11-04T04:56:30.615Z"
+  },
+  {
+    "id": "user_1793782136212",
+    "username": "chim1009",
+    "password": "$2a$10$4UeLMlFBiKQryvlhZC2DSumFLVWXVnx0vGHo/1YfKADLMJGiDZuOW",
+    "fullname": "lê",
+    "balance": 0,
+    "role": "user",
+    "isBanned": false,
+    "createdAt": "2026-11-04T08:48:56.212Z"
   }
 ]
