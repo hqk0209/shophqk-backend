@@ -134,5 +134,15 @@
     "role": "user",
     "isBanned": false,
     "createdAt": "2026-11-04T17:01:13.113Z"
+  },
+  {
+    "id": "user_1793852889410",
+    "username": "jshshdokbsh",
+    "password": "$2a$10$99uvADgn3NuF018DdeW/TuaLVcyOxpwrxouZmIIiFYz4xBQgyCsFe",
+    "fullname": "Trần quốc phát",
+    "balance": 0,
+    "role": "user",
+    "isBanned": false,
+    "createdAt": "2026-11-05T04:28:09.410Z"
   }
 ]
