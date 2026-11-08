@@ -144,5 +144,15 @@
     "role": "user",
     "isBanned": false,
     "createdAt": "2026-11-05T04:28:09.410Z"
+  },
+  {
+    "id": "user_1794100684209",
+    "username": "toiyeunycuahqk",
+    "password": "$2a$10$GQRh0o80qkCKn0AwCHuV.e.G.QwpNHwzyDjQE3MFeuYP.3I7NldaO",
+    "fullname": "Hà Văn Tùng",
+    "balance": 0,
+    "role": "user",
+    "isBanned": false,
+    "createdAt": "2026-11-08T01:18:04.209Z"
   }
 ]
