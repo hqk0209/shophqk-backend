@@ -154,5 +154,15 @@
     "role": "user",
     "isBanned": false,
     "createdAt": "2026-11-08T01:18:04.209Z"
+  },
+  {
+    "id": "user_1794237187208",
+    "username": "ggggg",
+    "password": "$2a$10$teJN4EGvTs82xsyNN5YHG.IjrBS4t9UBBvITPOzdwR0YFM9kyja5K",
+    "fullname": "Hvvggv",
+    "balance": 0,
+    "role": "user",
+    "isBanned": false,
+    "createdAt": "2026-11-09T15:13:07.208Z"
   }
 ]
