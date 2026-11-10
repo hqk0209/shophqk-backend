@@ -174,5 +174,15 @@
     "role": "user",
     "isBanned": false,
     "createdAt": "2026-11-10T04:31:16.008Z"
+  },
+  {
+    "id": "user_1794316190512",
+    "username": "gialong",
+    "password": "$2a$10$H5dc010AKlRF6YfpJIWyDezEqP3pawVqE7jqc9/1dMBuCBYN37qwa",
+    "fullname": "Nguyễn vũ gia long",
+    "balance": 0,
+    "role": "user",
+    "isBanned": false,
+    "createdAt": "2026-11-10T13:09:50.512Z"
   }
 ]
