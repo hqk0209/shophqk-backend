@@ -164,5 +164,15 @@
     "role": "user",
     "isBanned": false,
     "createdAt": "2026-11-09T15:13:07.208Z"
+  },
+  {
+    "id": "user_1794285076008",
+    "username": "whathoikhe123",
+    "password": "$2a$10$.XwgQNLwXFiXk8Bi2zun9.R7/cSjZD1MTTYEjbQYtAvx2jWYPYv/i",
+    "fullname": "Trần gia gưng",
+    "balance": 0,
+    "role": "user",
+    "isBanned": false,
+    "createdAt": "2026-11-10T04:31:16.008Z"
   }
 ]
