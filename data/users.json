@@ -214,5 +214,15 @@
     "role": "user",
     "isBanned": false,
     "createdAt": "2026-11-11T11:29:12.608Z"
+  },
+  {
+    "id": "user_1794570286813",
+    "username": "nhathoang",
+    "password": "$2a$10$BIlGl7P2vO/ap.HTTsEpVOLz7TrkHe71q2aJ6CU/Ampt0mkkMgLW6",
+    "fullname": "Nhathoang",
+    "balance": 0,
+    "role": "user",
+    "isBanned": false,
+    "createdAt": "2026-11-13T11:44:46.813Z"
   }
 ]
